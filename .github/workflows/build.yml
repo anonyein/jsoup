@@ -42,5 +42,5 @@ jobs:
         uses: actions/upload-artifact@v3
         with:
           name: jar_upload
-          path: /home/runner/work/jsoup/jsoup/target/jsoup-1.18.1-SNAPSHOT.jar
+          path: /home/runner/work/jsoup/jsoup/target/*.jar
 ...
