@@ -223,6 +223,25 @@ public class Elements extends ArrayList<Element> {
         return StringUtil.releaseBuilder(sb);
     }
 
+        /**
+     * Get the combined original text of all the matched elements.
+     * <p>
+     * Note that it is possible to get repeats if the matched elements contain both parent elements and their own
+     * children, as the Element.wholeText() method returns the combined original text of a parent and all its children.
+     * @return string of all text: unescaped and no HTML.
+     * @see Element#wholeText()
+     * @see #eachWholeText()
+     */
+    public String wholeText() {
+        StringBuilder sb = StringUtil.borrowBuilder();
+        for (Element element : this) {
+            if (sb.length() != 0)
+                sb.append("\n");
+            sb.append(element.wholeText());
+        }
+        return StringUtil.releaseBuilder(sb);
+    }
+
     /**
      Test if any matched Element has any text content, that is not just whitespace.
      @return true if any element has non-blank text content.
@@ -249,6 +268,23 @@ public class Elements extends ArrayList<Element> {
         for (Element el: this) {
             if (el.hasText())
                 texts.add(el.text());
+        }
+        return texts;
+    }
+
+        /**
+     * Get the text content of each of the matched elements. If an element has no text, then it is not included in the
+     * result.
+     * @return A list of each matched element's original text content.
+     * @see Element#wholeText()
+     * @see Element#hasText()
+     * @see #text()
+     */
+    public List<String> eachWholeText() {
+        ArrayList<String> texts = new ArrayList<>(size());
+        for (Element el: this) {
+            if (el.hasText())
+                texts.add(el.wholeText());
         }
         return texts;
     }
