@@ -223,7 +223,7 @@ public class Elements extends ArrayList<Element> {
         return StringUtil.releaseBuilder(sb);
     }
 
-        /**
+    /**
      * Get the combined original text of all the matched elements.
      * <p>
      * Note that it is possible to get repeats if the matched elements contain both parent elements and their own
@@ -272,7 +272,7 @@ public class Elements extends ArrayList<Element> {
         return texts;
     }
 
-        /**
+    /**
      * Get the text content of each of the matched elements. If an element has no text, then it is not included in the
      * result.
      * @return A list of each matched element's original text content.
