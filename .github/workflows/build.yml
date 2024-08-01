@@ -2,6 +2,12 @@ name: Build
 on:
   push:
   pull_request:
+    types:
+      - opened
+      - edited
+      - synchronize
+      - reopened
+  workflow_dispatch:
 
 jobs:
   test:
@@ -29,4 +35,10 @@ jobs:
 
       - name: Maven Verify
         run: mvn -X verify -B --file pom.xml
+
+      - name: jar upload
+        uses: actions/upload-artifact@v3
+        with:
+          name: jar_upload
+          path: /home/runner/work/jsoup/jsoup/target/*.jar
 ...
