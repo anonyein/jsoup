@@ -102,7 +102,7 @@ class CookieUtil {
                 String cookieVal = cd.consumeTo(";").trim();
                 // ignores path, date, domain, validateTLSCertificates et al. full details will be available in cookiestore if required
                 // name not blank, value not null
-                if (cookieName.length() > 0 && !cookies.containsKey(cookieName)) // if duplicates, only keep the first
+                if (cookieName.length() > 0)
                     res.cookie(cookieName, cookieVal);
 //                List<HttpCookie> cookies = HttpCookie.parse(headerVal);
 //                for (HttpCookie cookie : cookies) {
