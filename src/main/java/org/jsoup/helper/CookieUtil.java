@@ -2,6 +2,7 @@ package org.jsoup.helper;
 
 import org.jsoup.Connection;
 import org.jsoup.internal.StringUtil;
+import org.jsoup.parser.TokenQueue;
 
 import java.io.IOException;
 import java.net.CookieManager;
