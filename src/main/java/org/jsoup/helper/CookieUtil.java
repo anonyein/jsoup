@@ -96,19 +96,10 @@ class CookieUtil {
         Map<String, List<String>> cookieMap = manager.get(uri, resHeaders); // get cookies for url; may have been set on this or earlier requests. the headers here are ignored other than a null check
         for (List<String> values : cookieMap.values()) {
             for (String headerVal : values) {
-                if (headerVal == null || headerVal.length() == 0)
-                    continue;
-                TokenQueue cd = new TokenQueue(headerVal);
-                String cookieName = cd.chompTo("=").trim();
-                String cookieVal = cd.consumeTo(";").trim();
-                // ignores path, date, domain, validateTLSCertificates et al. full details will be available in cookiestore if required
-                // name not blank, value not null
-                if (cookieName.length() > 0)
-                    res.cookie(cookieName, cookieVal);
-//                List<HttpCookie> cookies = HttpCookie.parse(headerVal);
-//                for (HttpCookie cookie : cookies) {
-//                    res.cookie(cookie.getName(), cookie.getValue());
-//                }
+                List<HttpCookie> cookies = HttpCookie.parse(headerVal);
+                for (HttpCookie cookie : cookies) {
+                    res.cookie(cookie.getName(), cookie.getValue());
+                }
             }
         }
     }

@@ -1171,6 +1171,19 @@ public class HttpConnection implements Connection {
                     continue; // http/1.1 line
 
                 List<String> values = entry.getValue();
+                if (name.equalsIgnoreCase("Set-Cookie")) {
+                    for (String value : values) {
+                        if (value == null)
+                            continue;
+                        TokenQueue cd = new TokenQueue(value);
+                        String cookieName = cd.chompTo("=").trim();
+                        String cookieVal = cd.consumeTo(";").trim();
+                        // ignores path, date, domain, validateTLSCertificates et al. full details will be available in cookiestore if required
+                        // name not blank, value not null
+                        if (cookieName.length() > 0 && !cookies.containsKey(cookieName)) // if duplicates, only keep the first
+                            cookie(cookieName, cookieVal);
+                    }
+                }
                 for (String value : values) {
                     addHeader(name, fixHeaderEncoding(value));
                 }
