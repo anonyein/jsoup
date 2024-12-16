@@ -10,6 +10,7 @@ import org.jsoup.internal.StringUtil;
 import org.jsoup.nodes.Document;
 import org.jsoup.parser.Parser;
 import org.jsoup.parser.StreamParser;
+import org.jsoup.parser.TokenQueue;
 import org.jspecify.annotations.Nullable;
 
 import javax.net.ssl.HttpsURLConnection;
