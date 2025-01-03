@@ -267,7 +267,7 @@ public class HttpConnection implements Connection {
     }
 
     @Override
-    public Connection.KeyVal data(String key) {
+    public Connection.@Nullable KeyVal data(String key) {
         Validate.notEmptyParam(key, "key");
         for (Connection.KeyVal keyVal : request().data()) {
             if (keyVal.key().equals(key))
@@ -383,7 +383,7 @@ public class HttpConnection implements Connection {
         return this;
     }
 
-    @Override public Connection auth(RequestAuthenticator authenticator) {
+    @Override public Connection auth(@Nullable RequestAuthenticator authenticator) {
         req.auth(authenticator);
         return this;
     }
@@ -450,11 +450,11 @@ public class HttpConnection implements Connection {
             return (T) this;
         }
 
-        @Override
+        @Override @Nullable
         public String header(String name) {
             Validate.notNullParam(name, "name");
             List<String> vals = getHeadersCaseInsensitive(name);
-            if (vals.size() > 0) {
+            if (!vals.isEmpty()) {
                 // https://www.w3.org/Protocols/rfc2616/rfc2616-sec4.html#sec4.2
                 return StringUtil.join(vals, ", ");
             }
@@ -486,7 +486,7 @@ public class HttpConnection implements Connection {
         @Override
         public T header(String name, String value) {
             Validate.notEmptyParam(name, "name");
-            removeHeader(name); // ensures we don't get an "accept-encoding" and a "Accept-Encoding"
+            removeHeader(name); // ensures we don't get an "accept-encoding" and an "Accept-Encoding"
             addHeader(name, value);
             return (T) this;
         }
@@ -498,7 +498,7 @@ public class HttpConnection implements Connection {
         }
 
         /**
-         * Test if the request has a header with this value (case insensitive).
+         * Test if the request has a header with this value (case-insensitive).
          */
         @Override
         public boolean hasHeaderWithValue(String name, String value) {
@@ -527,7 +527,7 @@ public class HttpConnection implements Connection {
             for (Map.Entry<String, List<String>> entry : headers.entrySet()) {
                 String header = entry.getKey();
                 List<String> values = entry.getValue();
-                if (values.size() > 0)
+                if (!values.isEmpty())
                     map.put(header, values.get(0));
             }
             return map;
@@ -648,7 +648,7 @@ public class HttpConnection implements Connection {
             executing = false;
         }
 
-        @Override
+        @Override @Nullable
         public Proxy proxy() {
             return proxy;
         }
@@ -705,7 +705,7 @@ public class HttpConnection implements Connection {
             return ignoreHttpErrors;
         }
 
-        @Override
+        @Override @Nullable
         public SSLSocketFactory sslSocketFactory() {
             return sslSocketFactory;
         }
@@ -750,7 +750,7 @@ public class HttpConnection implements Connection {
             return this;
         }
 
-        @Override
+        @Override @Nullable
         public String requestBody() {
             return body;
         }
@@ -848,7 +848,7 @@ public class HttpConnection implements Connection {
 
             // set up the request for execution
             String mimeBoundary = null;
-            if (req.data().size() > 0 && (!methodHasBody || hasRequestBody))
+            if (!req.data().isEmpty() && (!methodHasBody || hasRequestBody))
                 serialiseRequestUrl(req);
             else if (methodHasBody)
                 mimeBoundary = setOutputContentType(req);
@@ -949,7 +949,7 @@ public class HttpConnection implements Connection {
             return statusMessage;
         }
 
-        @Override
+        @Override @Nullable
         public String charset() {
             return charset;
         }
@@ -960,7 +960,7 @@ public class HttpConnection implements Connection {
             return this;
         }
 
-        @Override
+        @Override @Nullable
         public String contentType() {
             return contentType;
         }
@@ -1412,7 +1412,7 @@ public class HttpConnection implements Connection {
             return this;
         }
 
-        @Override
+        @Override @Nullable
         public InputStream inputStream() {
             return stream;
         }
@@ -1429,7 +1429,7 @@ public class HttpConnection implements Connection {
             return this;
         }
 
-        @Override
+        @Override @Nullable
         public String contentType() {
             return contentType;
         }
