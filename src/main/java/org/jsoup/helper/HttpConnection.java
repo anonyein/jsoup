@@ -71,6 +71,11 @@ public class HttpConnection implements Connection {
     static final String DefaultUploadType = "application/octet-stream";
     private static final Charset ISO_8859_1 = Charset.forName("ISO-8859-1");
 
+    private HttpConnection.Request req;
+    private Connection.@Nullable Response res;
+    @Nullable Object client; // The HttpClient for this Connection, if via the HttpClientExecutor
+    @Nullable RequestAuthenticator lastAuth; // The previous Authenticator used by this Connection, if via the HttpClientExecutor
+
     /**
      Create a new Connection, with the request URL specified.
      @param url the URL to fetch from
@@ -98,6 +103,7 @@ public class HttpConnection implements Connection {
      */
     public HttpConnection() {
         req = new Request();
+        req.connection = this;
     }
 
     /**
@@ -112,9 +118,6 @@ public class HttpConnection implements Connection {
     static String encodeMimeName(String val) {
         return val.replace("\"", "%22");
     }
-
-    private HttpConnection.Request req;
-    private Connection.@Nullable Response res;
 
     @Override
     public Connection newRequest() {
@@ -594,6 +597,7 @@ public class HttpConnection implements Connection {
             // make sure that we can send Sec-Fetch-Site headers etc.
         }
 
+        HttpConnection connection;
         private @Nullable Proxy proxy;
         private int timeoutMilliseconds;
         private int maxBodySizeBytes;
@@ -628,6 +632,7 @@ public class HttpConnection implements Connection {
 
         Request(Request copy) {
             super(copy);
+            connection = copy.connection;
             proxy = copy.proxy;
             postDataCharset = copy.postDataCharset;
             timeoutMilliseconds = copy.timeoutMilliseconds;
