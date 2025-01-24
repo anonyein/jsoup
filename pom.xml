@@ -33,7 +33,7 @@
 
   <properties>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-    <jetty.version>9.4.56.v20240826</jetty.version>
+    <jetty.version>9.4.57.v20241219</jetty.version>
   </properties>
 
   <build>
@@ -275,7 +275,7 @@
         <!-- API version compat check - https://siom79.github.io/japicmp/ -->
         <groupId>com.github.siom79.japicmp</groupId>
         <artifactId>japicmp-maven-plugin</artifactId>
-        <version>0.23.0</version>
+        <version>0.23.1</version>
         <configuration>
           <!-- hard code previous version; can't detect when running stateless on build server -->
           <oldVersion>
