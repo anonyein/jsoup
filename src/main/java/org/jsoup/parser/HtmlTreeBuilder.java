@@ -28,10 +28,17 @@ import static org.jsoup.parser.Parser.*;
  */
 public class HtmlTreeBuilder extends TreeBuilder {
     // tag searches. must be sorted, used in inSorted. HtmlTreeBuilderTest validates they're sorted.
-    // todo - tag search in scope might need to be properly namespace aware - https://html.spec.whatwg.org/#has-an-element-in-scope
-    static final String[] TagsSearchInScope = new String[]{
-        "annotation-xml", "applet", "caption", "desc", "foreignObject", "html", "marquee", "mi", "mn", "mo", "ms", "mtext", "object", "table", "td", "template", "th", "title" // <- svg title
+    static final String[] TagsSearchInScope = new String[]{ // a particular element in scope
+        "applet", "caption", "html", "marquee", "object", "table", "td", "template", "th"
     };
+    // math and svg namespaces for particular element in scope
+    static final String[]TagSearchInScopeMath = new String[] {
+        "annotation-xml",  "mi", "mn", "mo", "ms", "mtext"
+    };
+    static final String[]TagSearchInScopeSvg = new String[] {
+        "desc", "foreignObject", "title"
+    };
+
     static final String[] TagSearchList = new String[]{"ol", "ul"};
     static final String[] TagSearchButton = new String[]{"button"};
     static final String[] TagSearchTableScope = new String[]{"html", "table"};
@@ -104,7 +111,7 @@ public class HtmlTreeBuilder extends TreeBuilder {
 
         if (context != null) {
             final String contextName = context.normalName();
-            contextElement = new Element(tagFor(contextName, settings), baseUri);
+            contextElement = new Element(tagFor(contextName, contextName, defaultNamespace(), settings), baseUri);
             if (context.ownerDocument() != null) // quirks setup:
                 doc.quirksMode(context.ownerDocument().quirksMode());
 
@@ -311,7 +318,7 @@ public class HtmlTreeBuilder extends TreeBuilder {
             }
         }
 
-        Tag tag = tagFor(startTag.tagName, namespace,
+        Tag tag = tagFor(startTag.tagName, startTag.normalName, namespace,
             forcePreserveCase ? ParseSettings.preserveCase : settings);
 
         return (tag.normalName().equals("form")) ?
@@ -681,13 +688,22 @@ public class HtmlTreeBuilder extends TreeBuilder {
         // don't walk too far up the tree
         for (int pos = bottom; pos >= top; pos--) {
             Element el = stack.get(pos);
-            final String elName = el.normalName();
-            if (inSorted(elName, targetNames))
-                return true;
-            if (inSorted(elName, baseTypes))
-                return false;
-            if (extraTypes != null && inSorted(elName, extraTypes))
-                return false;
+            String elName = el.normalName();
+            // namespace checks - arguments provided are always in html ns, with this bolt-on for math and svg:
+            String ns = el.tag().namespace();
+            if (ns.equals(NamespaceHtml)) {
+                if (inSorted(elName, targetNames))
+                    return true;
+                if (inSorted(elName, baseTypes))
+                    return false;
+                if (extraTypes != null && inSorted(elName, extraTypes))
+                    return false;
+            } else if (baseTypes == TagsSearchInScope) {
+                if (ns.equals(NamespaceMathml) && inSorted(elName, TagSearchInScopeMath))
+                    return false;
+                if (ns.equals(NamespaceSvg) && inSorted(elName, TagSearchInScopeSvg))
+                    return false;
+            }
         }
         //Validate.fail("Should not be reachable"); // would end up false because hitting 'html' at root (basetypes)
         return false;
@@ -932,7 +948,7 @@ public class HtmlTreeBuilder extends TreeBuilder {
 
             // 8. create new element from element, 9 insert into current node, onto stack
             skip = false; // can only skip increment from 4.
-            Element newEl = new Element(tagFor(entry.normalName(), settings), null, entry.attributes().clone());
+            Element newEl = new Element(tagFor(entry.nodeName(), entry.normalName(), defaultNamespace(), settings), null, entry.attributes().clone());
             doInsertElement(newEl, null);
 
             // 10. replace entry with new entry
