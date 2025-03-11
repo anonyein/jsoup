@@ -8,6 +8,9 @@
 
 * `Element.cssSelector()` will prefer to return shorter selectors by using ancestor IDs when available and unique. E.g.
   `#id > div > p` instead of  `html > body > div > div > p` [#2283](https://github.com/jhy/jsoup/pull/2283).
+* Added `Elements.deselect(int index)` and `Elements.deselect(Object o)` methods to remove elements from the `Elements`
+  list without affecting the DOM. And added `Elements.asList()` method to get a modifiable list of elements without
+  affecting the DOM. (Each Element is still connected to the DOM.) [#2100](https://github.com/jhy/jsoup/issues/2100).
 
 ### Bug Fixes
 
@@ -15,6 +18,9 @@
   normalized. [#1496].(https://github.com/jhy/jsoup/issues/1496)
 * When serializing to XML, characters that are invalid in XML 1.0 should be removed (not
   encoded). [#1743](https://github.com/jhy/jsoup/issues/1743).
+* When converting a Document to the W3C DOM in `W3CDom`, an element with an attribute in an undeclared namespace now
+  gets a declaration of `xmlns:prefix="undefined"`. This allows subsequent serializations to XML via `W3CDom.asString()`
+  to succeed. [#2087](https://github.com/jhy/jsoup/issues/2087).
 
 ## 1.19.1 (2025-03-04)
 
