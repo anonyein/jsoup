@@ -16,6 +16,8 @@ import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 import static org.jsoup.nodes.Document.OutputSettings.Syntax;
+import static org.jsoup.parser.Parser.NamespaceHtml;
+import static org.jsoup.parser.Parser.NamespaceXml;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
@@ -59,25 +61,6 @@ public class XmlTreeBuilderTest {
         Document doc = Jsoup.parse(xml, "http://foo.com/", Parser.xmlParser());
         assertEquals("<doc><val>One<val>Two</val>Three</val></doc>",
                 TextUtil.stripNewlines(doc.html()));
-    }
-
-    @Disabled
-    @Test
-    public void testSupplyParserToConnection() throws IOException {
-        String xmlUrl = "http://direct.infohound.net/tools/jsoup-xml-test.xml";
-
-        // parse with both xml and html parser, ensure different
-        Document xmlDoc = Jsoup.connect(xmlUrl).parser(Parser.xmlParser()).get();
-        Document htmlDoc = Jsoup.connect(xmlUrl).parser(Parser.htmlParser()).get();
-        Document autoXmlDoc = Jsoup.connect(xmlUrl).get(); // check connection auto detects xml, uses xml parser
-
-        assertEquals("<doc><val>One<val>Two</val>Three</val></doc>",
-                TextUtil.stripNewlines(xmlDoc.html()));
-        assertNotEquals(htmlDoc, xmlDoc);
-        assertEquals(xmlDoc, autoXmlDoc);
-        assertEquals(1, htmlDoc.select("head").size()); // html parser normalises
-        assertEquals(0, xmlDoc.select("head").size()); // xml parser does not
-        assertEquals(0, autoXmlDoc.select("head").size()); // xml parser does not
     }
 
     @Test
@@ -327,7 +310,7 @@ public class XmlTreeBuilderTest {
         ParseSettings settings = doc.parser().settings();
         assertTrue(settings.preserveTagCase());
         assertTrue(settings.preserveAttributeCase());
-        assertEquals(Parser.NamespaceXml, doc.parser().defaultNamespace());
+        assertEquals(NamespaceXml, doc.parser().defaultNamespace());
     }
 
     @Test void xmlNamespace() {
@@ -349,7 +332,7 @@ public class XmlTreeBuilderTest {
     }
 
     private static void assertXmlNamespace(Element el) {
-        assertEquals(Parser.NamespaceXml, el.tag().namespace(), String.format("Element %s not in XML namespace", el.tagName()));
+        assertEquals(NamespaceXml, el.tag().namespace(), String.format("Element %s not in XML namespace", el.tagName()));
     }
 
     @Test void declarations() {
@@ -409,4 +392,264 @@ public class XmlTreeBuilderTest {
         assertEquals(expect, doc.html());
     }
 
+    @Test void canSetCustomRcdataTag() {
+        String inner = "Blah\nblah\n<foo></foo>&quot;";
+        String innerText = "Blah\nblah\n<foo></foo>\"";
+
+        String xml = "<x><y><z>" + inner + "</z></y></x><x><z id=2></z>";
+        TagSet custom = new TagSet();
+        Tag z = custom.valueOf("z", NamespaceXml, ParseSettings.preserveCase);
+        z.set(Tag.RcData);
+
+        Document doc = Jsoup.parse(xml, Parser.xmlParser().tagSet(custom));
+        Element zEl = doc.expectFirst("z");
+        assertNotSame(z, zEl.tag()); // not same because we copy the tagset
+        assertEquals(z, zEl.tag());
+
+        assertEquals(1, zEl.childNodeSize());
+        Node child = zEl.childNode(0);
+        assertTrue(child instanceof TextNode);
+        assertEquals(innerText, ((TextNode) child).getWholeText());
+
+        // test fragment context parse - should parse <foo> as text
+        Element z2 = doc.expectFirst("#2");
+        z2.html(inner);
+        assertEquals(innerText, z2.wholeText());
+    }
+
+    @Test void canSetCustomDataTag() {
+        String inner = "Blah\nblah\n<foo></foo>&quot;"; // no character refs, will be as-is
+
+        String xml = "<x><y><z>" + inner + "</z></y></x><x><z id=2></z>";
+        TagSet custom = new TagSet();
+        Tag z = custom.valueOf("z", NamespaceXml, ParseSettings.preserveCase);
+        z.set(Tag.Data);
+
+        Document doc = Jsoup.parse(xml, Parser.xmlParser().tagSet(custom));
+        Element zEl = doc.expectFirst("z");
+        assertNotSame(z, zEl.tag()); // not same because we copy the tagset
+        assertEquals(z, zEl.tag());
+
+        assertEquals(1, zEl.childNodeSize());
+        Node child = zEl.childNode(0);
+        assertTrue(child instanceof DataNode);
+        assertEquals(inner, ((DataNode) child).getWholeData());
+        assertEquals(inner, zEl.data());
+
+        // test fragment context parse - should parse <foo> as data
+        Element z2 = doc.expectFirst("#2");
+        z2.html(inner);
+        assertEquals(inner, ((DataNode) child).getWholeData());
+        assertEquals(inner, zEl.data());
+    }
+
+    @Test void canSetCustomVoid() {
+        String ns = "custom";
+        String xml = "<x xmlns=custom><foo><link><meta>";
+        TagSet custom = new TagSet();
+        custom.valueOf("link", ns).set(Tag.Void);
+        custom.valueOf("meta", ns).set(Tag.Void);
+        custom.valueOf("foo", "other").set(Tag.Void); // ns doesn't match, won't impact
+
+        Document doc = Jsoup.parse(xml, Parser.xmlParser().tagSet(custom));
+        String expect = "<x xmlns=\"custom\"><foo><link /><meta /></foo></x>";
+        assertEquals(expect, doc.html());
+    }
+
+    @Test void canSupplyWithHtmlTagSet() {
+        // use the properties of html tag set but without HtmlTreeBuilder rules
+        String xml = "<html xmlns=" + NamespaceHtml + "><div><script>a<b</script><img><p>";
+        Document doc = Jsoup.parse(xml, Parser.xmlParser().tagSet(TagSet.Html()));
+        doc.outputSettings().prettyPrint(true);
+        String expect = "<html xmlns=\"http://www.w3.org/1999/xhtml\">\n" +
+            " <div>\n" +
+            "  <script>//<![CDATA[\n" +
+            "a<b\n" +
+            "//]]></script>\n" +
+            "  <img />\n" +
+            "  <p></p>\n" +
+            " </div>\n" +
+            "</html>";
+        assertEquals(expect, doc.html());
+
+        doc.outputSettings().syntax(Syntax.html);
+        expect = "<html xmlns=\"http://www.w3.org/1999/xhtml\">\n" +
+            " <div>\n" +
+            "  <script>a<b</script>\n" +
+            "  <img>\n" +
+            "  <p></p>\n" +
+            " </div>\n" +
+            "</html>";
+        assertEquals(expect, doc.html());
+    }
+
+    @Test void prettyFormatsTextInline() {
+        // https://github.com/jhy/jsoup/issues/2141
+        String xml = "<package><metadata xmlns:dc=\"http://purl.org/dc/elements/1.1/\">\n" +
+            "<dc:identifier id=\"pub-id\">id</dc:identifier>\n" +
+            "<dc:title>title</dc:title>\n" +
+            "<dc:language>ja</dc:language>\n" +
+            "<dc:description>desc</dc:description>\n" +
+            "</metadata></package>";
+        Document doc = Jsoup.parse(xml, Parser.xmlParser());
+        doc.outputSettings().prettyPrint(true);
+        assertEquals("<package>\n" +
+            " <metadata xmlns:dc=\"http://purl.org/dc/elements/1.1/\">\n" +
+            "  <dc:identifier id=\"pub-id\">id</dc:identifier><dc:title>title</dc:title> <dc:language>ja</dc:language> <dc:description>desc</dc:description>\n" +
+            " </metadata>\n" +
+            "</package>", doc.html());
+
+        // can customize
+        Element meta = doc.expectFirst("metadata");
+        Tag metaTag = meta.tag();
+        metaTag.set(Tag.Block);
+        // set all the inner els of meta to be blocks
+        for (Element inner : meta) inner.tag().set(Tag.Block);
+
+        assertEquals("<package>\n" +
+            " <metadata xmlns:dc=\"http://purl.org/dc/elements/1.1/\">\n" +
+            "  <dc:identifier id=\"pub-id\">id</dc:identifier>\n" +
+            "  <dc:title>title</dc:title>\n" +
+            "  <dc:language>ja</dc:language>\n" +
+            "  <dc:description>desc</dc:description>\n" +
+            " </metadata>\n" +
+            "</package>", doc.html());
+    }
+
+    // namespace tests
+    @Test void xmlns() {
+        // example from the xml namespace spec https://www.w3.org/TR/xml-names/
+        String xml = "<?xml version=\"1.0\"?>\n" +
+            "<!-- both namespace prefixes are available throughout -->\n" +
+            "<bk:book xmlns:bk=\"urn:loc.gov:books\" xmlns:isbn=\"urn:ISBN:0-395-36341-6\">\n" +
+            "    <bk:title>Cheaper by the Dozen</bk:title>\n" +
+            "    <isbn:number>1568491379</isbn:number>\n" +
+            "</bk:book>";
+        Document doc = Jsoup.parse(xml, Parser.xmlParser());
+
+        Element book = doc.expectFirst("bk|book");
+        assertEquals("bk:book", book.tag().name());
+        assertEquals("bk", book.tag().prefix());
+        assertEquals("book", book.tag().localName());
+        assertEquals("urn:loc.gov:books", book.tag().namespace());
+
+        Element title = doc.expectFirst("bk|title");
+        assertEquals("bk:title", title.tag().name());
+        assertEquals("urn:loc.gov:books", title.tag().namespace());
+
+        Element number = doc.expectFirst("isbn|number");
+        assertEquals("isbn:number", number.tag().name());
+        assertEquals("urn:ISBN:0-395-36341-6", number.tag().namespace());
+
+        // and we didn't modify the dom
+        assertEquals(xml, doc.html());
+    }
+
+    @Test void unprefixedDefaults() {
+        String xml = "<?xml version=\"1.0\"?>\n" +
+            "<!-- elements are in the HTML namespace, in this case by default -->\n" +
+            "<html xmlns=\"http://www.w3.org/1999/xhtml\">\n" +
+            "  <head><title>Frobnostication</title></head>\n" +
+            "  <body><p>Moved to \n" +
+            "    <a href=\"http://frob.example.com\">here</a>.</p></body>\n" +
+            "</html>";
+
+        Document doc = Jsoup.parse(xml, Parser.xmlParser());
+        Element html = doc.expectFirst("html");
+        assertEquals(NamespaceHtml, html.tag().namespace());
+        Element a = doc.expectFirst("a");
+        assertEquals(NamespaceHtml, a.tag().namespace());
+    }
+
+    @Test void emptyDefault() {
+        String xml = "<?xml version='1.0'?>\n" +
+            "<Beers>\n" +
+            "  <!-- the default namespace inside tables is that of HTML -->\n" +
+            "  <table xmlns='http://www.w3.org/1999/xhtml'>\n" +
+            "   <th><td>Name</td><td>Origin</td><td>Description</td></th>\n" +
+            "   <tr> \n" +
+            "     <!-- no default namespace inside table cells -->\n" +
+            "     <td><brandName xmlns=\"\">Huntsman</brandName></td>\n" +
+            "     <td><origin xmlns=\"\">Bath, UK</origin></td>\n" +
+            "     <td>\n" +
+            "       <details xmlns=\"\"><class>Bitter</class><hop>Fuggles</hop>\n" +
+            "         <pro>Wonderful hop, light alcohol, good summer beer</pro>\n" +
+            "         <con>Fragile; excessive variance pub to pub</con>\n" +
+            "         </details>\n" +
+            "        </td>\n" +
+            "      </tr>\n" +
+            "    </table>\n" +
+            "  </Beers>";
+
+        Document doc = Jsoup.parse(xml, Parser.xmlParser());
+        Element beers = doc.expectFirst("Beers");
+        assertEquals(NamespaceXml, beers.tag().namespace());
+        Element td = doc.expectFirst("td");
+        assertEquals(NamespaceHtml, td.tag().namespace());
+        Element origin = doc.expectFirst("origin");
+        assertEquals("", origin.tag().namespace());
+        Element pro = doc.expectFirst("pro");
+        assertEquals("", pro.tag().namespace());
+    }
+
+    @Test void namespacedAttribute() {
+        String xml = "<x xmlns:edi='http://ecommerce.example.org/schema'>\n" +
+            "  <!-- the 'taxClass' attribute's namespace is http://ecommerce.example.org/schema -->\n" +
+            "  <lineItem edi:taxClass=\"exempt\" other=foo>Baby food</lineItem>\n" +
+            "</x>";
+
+        Document doc = Jsoup.parse(xml, Parser.xmlParser());
+        Element lineItem = doc.expectFirst("lineItem");
+
+        Attribute taxClass = lineItem.attribute("edi:taxClass");
+        assertNotNull(taxClass);
+        assertEquals("edi", taxClass.prefix());
+        assertEquals("taxClass", taxClass.localName());
+        assertEquals("http://ecommerce.example.org/schema", taxClass.namespace());
+
+        Attribute other = lineItem.attribute("other");
+        assertNotNull(other);
+        assertEquals("foo", other.getValue());
+        assertEquals("", other.prefix());
+        assertEquals("other", other.localName());
+        assertEquals("", other.namespace());
+    }
+
+    @Test void elementsViaAppendHtmlAreNamespaced() {
+        // tests that when elements / attributes are added via a fragment parse, they inherit the namespace stack, and can still override
+        String xml = "<out xmlns='/out'><bk:book xmlns:bk='/books' xmlns:edi='/edi'><bk:title>Test</bk:title><li edi:foo='bar'></bk:book></out>";
+        Document doc = Jsoup.parse(xml, Parser.xmlParser());
+
+        // insert some parsed xml, inherit bk and edi, and with an inner node override bk
+        Element book = doc.expectFirst("bk|book");
+        book.append("<bk:content edi:foo=qux>Content</bk:content>");
+
+        Element out = doc.expectFirst("out");
+        assertEquals("/out", out.tag().namespace());
+
+        Element content = book.expectFirst("bk|content");
+        assertEquals("bk:content", content.tag().name());
+        assertEquals("/books", content.tag().namespace());
+        assertEquals("/edi", content.attribute("edi:foo").namespace());
+
+        content.append("<data>Data</data><html xmlns='/html' xmlns:bk='/update'><p>Foo</p><bk:news>News</bk:news></html>");
+        // p should be in /html, news in /update
+        Element p = content.expectFirst("p");
+        assertEquals("/html", p.tag().namespace());
+        Element news = content.expectFirst("bk|news");
+        assertEquals("/update", news.tag().namespace());
+        Element data = content.expectFirst("data");
+        assertEquals("/out", data.tag().namespace());
+    }
+
+    @Test void selfClosingOK() {
+        // In XML, all tags can be self-closing regardless of tag type
+        Parser parser = Parser.xmlParser().setTrackErrors(10);
+        String xml = "<div id='1'/><p/><div>Foo</div><div></div><foo></foo>";
+        Document doc = Jsoup.parse(xml, "", parser);
+        ParseErrorList errors = parser.getErrors();
+        assertEquals(0, errors.size());
+        assertEquals("<div id=\"1\" /><p /><div>Foo</div><div /><foo></foo>", TextUtil.stripNewlines(doc.outerHtml()));
+        // we infer that empty els can be represented with self-closing if seen in parse
+    }
 }

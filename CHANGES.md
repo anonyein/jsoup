@@ -4,14 +4,28 @@
 
 ### Changes
 
+* To better follow the HTML5 spec and current browsers, the HTML parser no longer allows self-closing tags (`<foo />`)
+  to close HTML elements by default. Foreign content (SVG, MathML), and content parsed with the XML parser, still
+  supports self-closing tags. If you need specific HTML tags to support self-closing, you can register a custom tag via
+  the `TagSet` configured in `Parser.tagSet()`, using `Tag#set(Tag.SelfClose)`. Void/empty tags (like `<img>`) are
+  unaffected by this change. [#2300](https://github.com/jhy/jsoup/issues/2300).
+
 ### Improvements
 
+* Added the ability to define custom tags, and to modify properties of known tags, via the `TagSet` tag collection.
+  Their properties can impact both the parse and how content is
+  serialized. [#2285](https://github.com/jhy/jsoup/issues/2285).
 * `Element.cssSelector()` will prefer to return shorter selectors by using ancestor IDs when available and unique. E.g.
   `#id > div > p` instead of  `html > body > div > div > p` [#2283](https://github.com/jhy/jsoup/pull/2283).
 * Added `Elements.deselect(int index)`, `Elements.deselect(Object o)`, and `Elements.deselectAll()` methods to remove
   elements from the `Elements`
   list without affecting the DOM. And added `Elements.asList()` method to get a modifiable list of elements without
   affecting the DOM. (Each Element is still connected to the DOM.) [#2100](https://github.com/jhy/jsoup/issues/2100).
+* Added support for sending a request body from an InputStream with
+  `Connection.requestBodyStream(InputStream stream)`. [#1122](https://github.com/jhy/jsoup/issues/1122).
+* The XML parser now supports scoped xmlns: prefix namespace declarations, and applies the correct namespace to Tags and
+  Attributes. Also, added `Tag#prefix()`, `Tag#localName()`, `Attribute#prefix()`, `Attribute#localName()`, and
+  `Attribute#namespace()` to retrieve these. [#2299](https://github.com/jhy/jsoup/issues/2299).
 
 ### Bug Fixes
 

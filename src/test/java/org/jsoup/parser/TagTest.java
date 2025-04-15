@@ -1,10 +1,14 @@
 package org.jsoup.parser;
 
+import org.jsoup.Jsoup;
 import org.jsoup.MultiLocaleExtension.MultiLocaleTest;
+import org.jsoup.nodes.Document;
 import org.junit.jupiter.api.Test;
 
 import java.util.Locale;
 
+import static org.jsoup.parser.Parser.NamespaceHtml;
+import static org.jsoup.parser.Parser.NamespaceSvg;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
@@ -21,9 +25,14 @@ public class TagTest {
     public void canBeInsensitive(Locale locale) {
         Locale.setDefault(locale);
 
-        Tag script1 = Tag.valueOf("script", ParseSettings.htmlDefault);
-        Tag script2 = Tag.valueOf("SCRIPT", ParseSettings.htmlDefault);
-        assertSame(script1, script2);
+        Tag script1 = Tag.valueOf("script", NamespaceHtml, ParseSettings.htmlDefault);
+        Tag script2 = Tag.valueOf("SCRIPT", NamespaceHtml, ParseSettings.htmlDefault);
+        assertEquals(script1, script2);
+
+        TagSet htmlTags = TagSet.Html();
+        Tag script3 = htmlTags.valueOf("script", NamespaceHtml, ParseSettings.htmlDefault);
+        Tag script4 = htmlTags.valueOf("SCRIPT", NamespaceHtml, ParseSettings.htmlDefault);
+        assertSame(script3, script4);
     }
 
     @Test public void trims() {
@@ -36,21 +45,38 @@ public class TagTest {
         Tag p1 = Tag.valueOf("p");
         Tag p2 = Tag.valueOf("p");
         assertEquals(p1, p2);
-        assertSame(p1, p2);
+        assertNotSame(p1, p2); // not same because Tag.valueOf creates new clone of the TagSet.Html, so changes don't clobber all
+
+        TagSet html1 = TagSet.Html();
+        TagSet html2 = TagSet.Html();
+        assertEquals(html1, html2);
+        assertNotSame(html1, html2);
+
+        Tag p3 = html1.valueOf("p", NamespaceHtml);
+        Tag p4 = html1.valueOf("p", NamespaceHtml);
+        Tag p5 = html2.valueOf("p", NamespaceHtml);
+        Tag p6 = html2.valueOf("p", NamespaceHtml);
+        assertEquals(p1, p3);
+        assertEquals(p3, p4);
+        assertEquals(p4, p5);
+        assertSame(p3, p4);
+        assertSame(p5, p6);
+        assertNotSame(p3, p5);
     }
 
     @Test public void divSemantics() {
         Tag div = Tag.valueOf("div");
 
         assertTrue(div.isBlock());
-        assertTrue(div.formatAsBlock());
+        assertFalse(div.isInline());
+        assertTrue(div.isKnownTag());
     }
 
     @Test public void pSemantics() {
         Tag p = Tag.valueOf("p");
-
+        assertTrue(p.isKnownTag());
         assertTrue(p.isBlock());
-        assertFalse(p.formatAsBlock());
+        assertFalse(p.isInline());
     }
 
     @Test public void imgSemantics() {
@@ -65,8 +91,11 @@ public class TagTest {
         Tag foo2 = Tag.valueOf("FOO");
 
         assertEquals(foo, foo2);
+        assertFalse(foo.isKnownTag());
         assertTrue(foo.isInline());
-        assertTrue(foo.formatAsBlock());
+        assertFalse(foo.isBlock());
+        assertFalse(foo.is(Tag.InlineContainer));
+        assertFalse(foo.preserveWhitespace());
     }
 
     @Test public void valueOfChecksNotNull() {
@@ -86,21 +115,45 @@ public class TagTest {
         Tag svgHtml = Tag.valueOf("svg"); // no namespace specified, defaults to html, so not the known tag
         Tag svg = Tag.valueOf("svg", Parser.NamespaceSvg, ParseSettings.htmlDefault);
 
-        assertEquals(Parser.NamespaceHtml, svgHtml.namespace());
+        assertEquals(NamespaceHtml, svgHtml.namespace());
         assertEquals(Parser.NamespaceSvg, svg.namespace());
 
-        assertFalse(svgHtml.isBlock()); // generated
-        assertTrue(svg.isBlock()); // known
+        assertFalse(svgHtml.isKnownTag()); // generated
+        assertTrue(svg.isKnownTag()); // known
     }
 
     @Test public void unknownTagNamespace() {
         Tag fooHtml = Tag.valueOf("foo"); // no namespace specified, defaults to html
         Tag foo = Tag.valueOf("foo", Parser.NamespaceSvg, ParseSettings.htmlDefault);
 
-        assertEquals(Parser.NamespaceHtml, fooHtml.namespace());
+        assertEquals(NamespaceHtml, fooHtml.namespace());
         assertEquals(Parser.NamespaceSvg, foo.namespace());
 
-        assertFalse(fooHtml.isBlock()); // generated
-        assertFalse(foo.isBlock()); // generated
+        assertFalse(fooHtml.isKnownTag()); // generated
+        assertFalse(foo.isKnownTag()); // generated
+    }
+
+    @Test void canSetOptions() {
+        Tag tag = new Tag("foo", NamespaceHtml);
+        assertFalse(tag.isKnownTag());
+        assertFalse(tag.isEmpty());
+        tag.set(Tag.Void);
+        assertTrue(tag.isEmpty());
+        assertTrue(tag.isKnownTag());
+    }
+
+    @Test void updateNameAndNamespace() {
+        Tag tag = new Tag("foo", NamespaceHtml);
+        tag.name("bar").namespace(NamespaceSvg);
+        tag.set(Tag.Block);
+        assertEquals("bar", tag.name());
+        assertEquals(NamespaceSvg, tag.namespace());
+        assertTrue(tag.isBlock()); // properties are unchanged
+
+        // test in a doc
+        Document doc = Jsoup.parse("<foo>One</foo><foo>Two</foo>");
+        Tag foo = doc.expectFirst("foo").tag();
+        foo.name("BAR");
+        assertEquals("<BAR>One</BAR><BAR>Two</BAR>", doc.body().html()); // is case-sensitive
     }
 }

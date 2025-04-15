@@ -283,6 +283,12 @@ public class HttpConnection implements Connection {
     }
 
     @Override
+    public Connection requestBodyStream(InputStream stream) {
+        req.requestBodyStream(stream);
+        return this;
+    }
+
+    @Override
     public Connection header(String name, String value) {
         req.header(name, value);
         return this;
@@ -603,7 +609,7 @@ public class HttpConnection implements Connection {
         private int maxBodySizeBytes;
         private boolean followRedirects;
         private final Collection<Connection.KeyVal> data;
-        private @Nullable String body = null;
+        private @Nullable Object body = null; // String or InputStream
         @Nullable String mimeBoundary;
         private boolean ignoreHttpErrors = false;
         private boolean ignoreContentType = false;
@@ -755,7 +761,13 @@ public class HttpConnection implements Connection {
 
         @Override @Nullable
         public String requestBody() {
-            return body;
+            return body instanceof String ? (String) body : null;
+        }
+
+        @Override
+        public Connection.Request requestBodyStream(InputStream stream) {
+            body = stream;
+            return this;
         }
 
         @Override
@@ -846,7 +858,7 @@ public class HttpConnection implements Connection {
             if (!protocol.equals("http") && !protocol.equals("https"))
                 throw new MalformedURLException("Only http & https protocols supported");
             final boolean supportsBody = req.method().hasBody();
-            final boolean hasBody = req.requestBody() != null;
+            final boolean hasBody = req.body != null;
             if (!supportsBody)
                 Validate.isFalse(hasBody, "Cannot set a request body for HTTP method " + req.method());
 
@@ -1219,11 +1231,10 @@ public class HttpConnection implements Connection {
 
         static void writePost(final HttpConnection.Request req, final OutputStream outputStream) throws IOException {
             final Collection<Connection.KeyVal> data = req.data();
-            final BufferedWriter w = new BufferedWriter(new OutputStreamWriter(outputStream, Charset.forName(req.postDataCharset())));
+            final BufferedWriter w = new BufferedWriter(new OutputStreamWriter(outputStream, req.postDataCharset()));
             final String boundary = req.mimeBoundary;
 
-            if (boundary != null) {
-                // boundary will be set if we're in multipart mode
+            if (boundary != null) { // a multipart post
                 for (Connection.KeyVal keyVal : data) {
                     w.write("--");
                     w.write(boundary);
@@ -1239,7 +1250,7 @@ public class HttpConnection implements Connection {
                         String contentType = keyVal.contentType();
                         w.write(contentType != null ? contentType : DefaultUploadType);
                         w.write("\r\n\r\n");
-                        w.flush(); // flush
+                        w.flush();
                         DataUtil.crossStreams(input, outputStream);
                         outputStream.flush();
                     } else {
@@ -1251,25 +1262,24 @@ public class HttpConnection implements Connection {
                 w.write("--");
                 w.write(boundary);
                 w.write("--");
-            } else {
-                String body = req.requestBody();
-                if (body != null) {
-                    // data will be in query string, we're sending a plaintext body
-                    w.write(body);
+            } else if (req.body != null) { // a single body (bytes or plain text);  data will be in query string
+                if (req.body instanceof String) {
+                    w.write((String) req.body);
+                } else if (req.body instanceof InputStream) {
+                    DataUtil.crossStreams((InputStream) req.body, outputStream);
+                    outputStream.flush();
+                } else {
+                    throw new IllegalStateException();
                 }
-                else {
-                    // regular form data (application/x-www-form-urlencoded)
-                    boolean first = true;
-                    for (Connection.KeyVal keyVal : data) {
-                        if (!first)
-                            w.append('&');
-                        else
-                            first = false;
+            } else { // regular form data (application/x-www-form-urlencoded)
+                boolean first = true;
+                for (Connection.KeyVal keyVal : data) {
+                    if (!first) w.append('&');
+                    else first = false;
 
-                        w.write(URLEncoder.encode(keyVal.key(), req.postDataCharset()));
-                        w.write('=');
-                        w.write(URLEncoder.encode(keyVal.value(), req.postDataCharset()));
-                    }
+                    w.write(URLEncoder.encode(keyVal.key(), req.postDataCharset()));
+                    w.write('=');
+                    w.write(URLEncoder.encode(keyVal.value(), req.postDataCharset()));
                 }
             }
             w.close();

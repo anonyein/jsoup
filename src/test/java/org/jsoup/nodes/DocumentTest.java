@@ -7,6 +7,7 @@ import org.jsoup.nodes.Document.OutputSettings;
 import org.jsoup.nodes.Document.OutputSettings.Syntax;
 import org.jsoup.parser.ParseSettings;
 import org.jsoup.parser.Parser;
+import org.jsoup.parser.Tag;
 import org.jsoup.select.Elements;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
@@ -123,9 +124,11 @@ public class DocumentTest {
     }
 
     @Test void testBasicIndent() {
-        Document doc = Jsoup.parse("<title>Hello</title> <p>One<p>Two");
+        Document doc = Jsoup.parse("<title>Hello</title> <p>One\n<p>Two\n");
         String expect = "<html>\n <head>\n  <title>Hello</title>\n </head>\n <body>\n  <p>One</p>\n  <p>Two</p>\n </body>\n</html>";
-        assertEquals(expect, doc.html());
+        String html = doc.html();
+        System.out.println(html);
+        assertEquals(expect, html);
     }
 
     @Test public void testClonesDeclarations() {
@@ -156,14 +159,16 @@ public class DocumentTest {
 
     @Test public void testHtmlAndXmlSyntax() {
         String h = "<!DOCTYPE html><body><img async checked='checked' src='&<>\"'>&lt;&gt;&amp;&quot;<foo />bar";
-        Document doc = Jsoup.parse(h);
+        Parser parser = Parser.htmlParser();
+        parser.tagSet().valueOf("foo", Parser.NamespaceHtml).set(Tag.SelfClose); // customize foo to allow self close
+        Document doc = Jsoup.parse(h, parser);
 
         doc.outputSettings().syntax(Syntax.html);
         assertEquals("<!doctype html>\n" +
                 "<html>\n" +
                 " <head></head>\n" +
                 " <body>\n" +
-                "  <img async checked src=\"&amp;<>&quot;\">&lt;&gt;&amp;\"<foo />bar\n" +
+                "  <img async checked src=\"&amp;<>&quot;\">&lt;&gt;&amp;\"<foo></foo>bar\n" + // html won't include self-closing
                 " </body>\n" +
                 "</html>", doc.html());
 
@@ -172,7 +177,7 @@ public class DocumentTest {
                 "<html>\n" +
                 " <head></head>\n" +
                 " <body>\n" +
-                "  <img async=\"\" checked=\"checked\" src=\"&amp;&lt;>&quot;\" />&lt;&gt;&amp;\"<foo />bar\n" +
+                "  <img async=\"\" checked=\"checked\" src=\"&amp;&lt;>&quot;\" />&lt;&gt;&amp;\"<foo />bar\n" + // xml will
                 " </body>\n" +
                 "</html>", doc.html());
     }
@@ -347,10 +352,8 @@ public class DocumentTest {
         final Document doc = createXmlDocument("1.0", "changeThis", true);
         doc.charset(Charset.forName(charsetUtf8));
 
-        final String xmlCharsetUTF8 = "<?xml version=\"1.0\" encoding=\"" + charsetUtf8 + "\"?>\n" +
-                                        "<root>\n" +
-                                        " node\n" +
-                                        "</root>";
+        final String xmlCharsetUTF8 = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n" +
+            "<root>node</root>";
         assertEquals(xmlCharsetUTF8, doc.toString());
 
         XmlDeclaration selectedNode = (XmlDeclaration) doc.childNode(0);
@@ -364,10 +367,8 @@ public class DocumentTest {
         final Document doc = createXmlDocument("1.0", "changeThis", true);
         doc.charset(Charset.forName(charsetIso8859));
 
-        final String xmlCharsetISO = "<?xml version=\"1.0\" encoding=\"" + charsetIso8859 + "\"?>\n" +
-                                        "<root>\n" +
-                                        " node\n" +
-                                        "</root>";
+        final String xmlCharsetISO = "<?xml version=\"1.0\" encoding=\"ISO-8859-1\"?>\n" +
+            "<root>node</root>";
         assertEquals(xmlCharsetISO, doc.toString());
 
         XmlDeclaration selectedNode = (XmlDeclaration) doc.childNode(0);
@@ -381,10 +382,8 @@ public class DocumentTest {
         final Document doc = createXmlDocument("1.0", "none", false);
         doc.charset(Charset.forName(charsetUtf8));
 
-        final String xmlCharsetUTF8 = "<?xml version=\"1.0\" encoding=\"" + charsetUtf8 + "\"?>\n" +
-                                        "<root>\n" +
-                                        " node\n" +
-                                        "</root>";
+        final String xmlCharsetUTF8 = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n" +
+            "<root>node</root>";
         assertEquals(xmlCharsetUTF8, doc.toString());
 
         XmlDeclaration selectedNode = (XmlDeclaration) doc.childNode(0);
@@ -395,9 +394,7 @@ public class DocumentTest {
     public void testMetaCharsetUpdateXmlDisabled() {
         final Document doc = createXmlDocument("none", "none", false);
 
-        final String xmlNoCharset = "<root>\n" +
-                                    " node\n" +
-                                    "</root>";
+        final String xmlNoCharset = "<root>node</root>";
         assertEquals(xmlNoCharset, doc.toString());
     }
 
@@ -406,9 +403,7 @@ public class DocumentTest {
         final Document doc = createXmlDocument("dontTouch", "dontTouch", true);
 
         final String xmlCharset = "<?xml version=\"dontTouch\" encoding=\"dontTouch\"?>\n" +
-                                    "<root>\n" +
-                                    " node\n" +
-                                    "</root>";
+            "<root>node</root>";
         assertEquals(xmlCharset, doc.toString());
 
         XmlDeclaration selectedNode = (XmlDeclaration) doc.childNode(0);

@@ -1,8 +1,12 @@
 package org.jsoup.parser;
 
 import org.jsoup.helper.Validate;
+import org.jsoup.internal.SharedConstants;
+import org.jsoup.nodes.Attribute;
+import org.jsoup.nodes.Attributes;
 import org.jsoup.nodes.CDataNode;
 import org.jsoup.nodes.Comment;
+import org.jsoup.nodes.DataNode;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.DocumentType;
 import org.jsoup.nodes.Element;
@@ -11,10 +15,15 @@ import org.jsoup.nodes.LeafNode;
 import org.jsoup.nodes.Node;
 import org.jsoup.nodes.TextNode;
 import org.jsoup.nodes.XmlDeclaration;
+import org.jsoup.select.Elements;
+import org.jspecify.annotations.Nullable;
 
 import java.io.Reader;
 import java.io.StringReader;
+import java.util.ArrayDeque;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import static org.jsoup.parser.Parser.NamespaceXml;
 
@@ -26,6 +35,10 @@ import static org.jsoup.parser.Parser.NamespaceXml;
  * @author Jonathan Hedley
  */
 public class XmlTreeBuilder extends TreeBuilder {
+    static final String XmlnsKey = "xmlns";
+    static final String XmlnsPrefix = "xmlns:";
+    private final ArrayDeque<HashMap<String, String>> namespacesStack = new ArrayDeque<>(); // stack of namespaces, prefix => urn
+
     @Override ParseSettings defaultSettings() {
         return ParseSettings.preserveCase;
     }
@@ -37,6 +50,34 @@ public class XmlTreeBuilder extends TreeBuilder {
             .syntax(Document.OutputSettings.Syntax.xml)
             .escapeMode(Entities.EscapeMode.xhtml)
             .prettyPrint(false); // as XML, we don't understand what whitespace is significant or not
+
+        namespacesStack.clear();
+        HashMap<String, String> ns = new HashMap<>();
+        ns.put("xml", NamespaceXml);
+        ns.put("", NamespaceXml);
+        namespacesStack.push(ns);
+    }
+
+    @Override
+    void initialiseParseFragment(@Nullable Element context) {
+        super.initialiseParseFragment(context);
+        if (context == null) return;
+
+        // transition to the tag's text state if available
+        TokeniserState textState = context.tag().textState();
+        if (textState != null) tokeniser.transition(textState);
+
+        // reconstitute the namespace stack by traversing the element and its parents (top down)
+        Elements chain = context.parents();
+        chain.add(0, context);
+        for (int i = chain.size() - 1; i >= 0; i--) {
+            Element el = chain.get(i);
+            HashMap<String, String> namespaces = new HashMap<>(namespacesStack.peek());
+            namespacesStack.push(namespaces);
+            if (el.attributesSize() > 0) {
+                processNamespaces(el.attributes(), namespaces);
+            }
+        }
     }
 
     Document parse(Reader input, String baseUri) {
@@ -58,6 +99,11 @@ public class XmlTreeBuilder extends TreeBuilder {
 
     @Override public String defaultNamespace() {
         return NamespaceXml;
+    }
+
+    @Override
+    TagSet defaultTagSet() {
+        return new TagSet(); // an empty tagset
     }
 
     @Override
@@ -93,18 +139,72 @@ public class XmlTreeBuilder extends TreeBuilder {
     }
 
     void insertElementFor(Token.StartTag startTag) {
-        Tag tag = tagFor(startTag.name(), startTag.normalName(), defaultNamespace(), settings);
-        if (startTag.attributes != null)
-            startTag.attributes.deduplicate(settings);
+        // handle namespace for tag
+        HashMap<String, String> namespaces = new HashMap<>(namespacesStack.peek());
+        namespacesStack.push(namespaces);
 
-        Element el = new Element(tag, null, settings.normalizeAttributes(startTag.attributes));
+        Attributes attributes = startTag.attributes;
+        if (attributes != null) {
+            attributes.deduplicate(settings);
+            processNamespaces(attributes, namespaces);
+            applyNamespacesToAttributes(attributes, namespaces);
+        }
+
+        String ns = resolveNamespace(startTag.tagName, namespaces);
+        Tag tag = tagFor(startTag.tagName, startTag.normalName, ns, settings);
+        Element el = new Element(tag, null, settings.normalizeAttributes(attributes));
         currentElement().appendChild(el);
         push(el);
 
         if (startTag.isSelfClosing()) {
-            tag.setSelfClosing();
+            tag.setSeenSelfClose();
             pop(); // push & pop ensures onNodeInserted & onNodeClosed
+        } else if (tag.isEmpty()) {
+            pop(); // custom defined void tag
+        } else {
+            TokeniserState textState = tag.textState();
+            if (textState != null) tokeniser.transition(textState);
         }
+    }
+
+    private static void processNamespaces(Attributes attributes, HashMap<String, String> namespaces) {
+        // process attributes for namespaces (xmlns, xmlns:)
+        for (Attribute attr : attributes) {
+            String key = attr.getKey();
+            String value = attr.getValue();
+            if (key.equals(XmlnsKey)) {
+                namespaces.put("", value); // new default for this level
+            } else if (key.startsWith(XmlnsPrefix)) {
+                String nsPrefix = key.substring(XmlnsPrefix.length());
+                namespaces.put(nsPrefix, value);
+            }
+        }
+    }
+
+    private static void applyNamespacesToAttributes(Attributes attributes, HashMap<String, String> namespaces) {
+        // second pass, apply namespace to attributes. Collects them first then adds (as userData is an attribute)
+        Map<String, String> attrPrefix = new HashMap<>();
+        for (Attribute attr: attributes) {
+            String prefix = attr.prefix();
+            if (!prefix.isEmpty()) {
+                if (prefix.equals(XmlnsKey)) continue;
+                String ns = namespaces.get(prefix);
+                if (ns != null) attrPrefix.put(SharedConstants.XmlnsAttr + prefix, ns);
+            }
+        }
+        for (Map.Entry<String, String> entry : attrPrefix.entrySet())
+            attributes.userData(entry.getKey(), entry.getValue());
+    }
+
+    private static String resolveNamespace(String tagName, HashMap<String, String> namespaces) {
+        String ns = namespaces.get("");
+        int pos = tagName.indexOf(':');
+        if (pos > 0) {
+            String prefix = tagName.substring(0, pos);
+            if (namespaces.containsKey(prefix))
+                ns = namespaces.get(prefix);
+        }
+        return ns;
     }
 
     void insertLeafNode(LeafNode node) {
@@ -114,21 +214,16 @@ public class XmlTreeBuilder extends TreeBuilder {
 
     void insertCommentFor(Token.Comment commentToken) {
         Comment comment = new Comment(commentToken.getData());
-        LeafNode insert = comment;
-        if (commentToken.bogus && comment.isXmlDeclaration()) {
-            // xml declarations are emitted as bogus comments (which is right for html, but not xml)
-            // so we do a bit of a hack and parse the data as an element to pull the attributes out
-            // todo - refactor this to parse more appropriately
-            XmlDeclaration decl = comment.asXmlDeclaration(); // else, we couldn't parse it as a decl, so leave as a comment
-            if (decl != null)
-                insert = decl;
-        }
-        insertLeafNode(insert);
+        insertLeafNode(comment);
     }
 
     void insertCharacterFor(Token.Character token) {
         final String data = token.getData();
-        insertLeafNode(token.isCData() ? new CDataNode(data) : new TextNode(data));
+        LeafNode node;
+        if      (token.isCData())                       node = new CDataNode(data);
+        else if (currentElement().tag().is(Tag.Data))   node = new DataNode(data);
+        else                                            node = new TextNode(data);
+        insertLeafNode(node);
     }
 
     void insertDoctypeFor(Token.Doctype token) {
@@ -141,6 +236,12 @@ public class XmlTreeBuilder extends TreeBuilder {
         XmlDeclaration decl = new XmlDeclaration(token.name(), token.isDeclaration);
         if (token.attributes != null) decl.attributes().addAll(token.attributes);
         insertLeafNode(decl);
+    }
+
+    @Override
+    Element pop() {
+        namespacesStack.pop();
+        return super.pop();
     }
 
     /**
