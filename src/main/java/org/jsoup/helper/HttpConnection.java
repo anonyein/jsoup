@@ -1129,7 +1129,8 @@ public class HttpConnection implements Connection {
                         if (value == null)
                             continue;
                         TokenQueue cd = new TokenQueue(value);
-                        String cookieName = cd.chompTo("=").trim();
+                        String cookieName = cd.consumeTo("=").trim();
+			cd.matchChomp("=");
                         String cookieVal = cd.consumeTo(";").trim();
                         // ignores path, date, domain, validateTLSCertificates et al. full details will be available in cookiestore if required
                         // name not blank, value not null
