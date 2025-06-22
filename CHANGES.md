@@ -13,6 +13,7 @@
 * Added `Selector#evaluatorOf(String css)`, as a clearer way to obtain an Evaluator from a CSS query. An alias of `QueryParser.parse(String css)`.
 * Custom tags (defined via the `TagSet`) in a foreign namespace (e.g. SVG) can be configured to parse as data tags.
 * Added `NodeVisitor#traverse(Node)` to simplify node traversal calls (vs. importing `NodeTraversor`).
+* Updated the default user-agent string to improve compatibility. [#2341](https://github.com/jhy/jsoup/issues/2341) 
 * The HTML parser now allows the specific text-data type (Data, RcData) to be customized for known tags. (Previously, that was only supported on custom tags.) [#2326](https://github.com/jhy/jsoup/issues/2326).
 * Added `Connection#readFully()` as a replacement for `Connection#bufferUp()` with an explicit IOException. Similarly, added `Connection#readBody()` over `Connection#body()`. Deprecated `Connection#bufferUp()`. [#2327](https://github.com/jhy/jsoup/pull/2327) 
 * When serializing HTML, the `<` and `>` characters are now escaped in attributes. This helps prevent a class of mutation XSS attacks. [#2337](https://github.com/jhy/jsoup/pull/2337)
@@ -25,7 +26,7 @@
 * Custom tags with hyphens or other non-letter characters in their names now work correctly as Data or RcData tags. Their closing tags are now tokenized properly. [#2332](https://github.com/jhy/jsoup/issues/2332)
 * When cloning an Element, the clone would retain the source's cached child Element list (if any), which could lead to incorrect results when modifying the clone's child elements. [#2334](https://github.com/jhy/jsoup/issues/2334)
 
-## 1.20.1 (2025-04-29)
+## 1.20.1 (2025-Apr-29)
 
 ### Changes
 
@@ -89,7 +90,7 @@
   incorrectly emit an error. [#2298](https://github.com/jhy/jsoup/issues/2298).
 * Calling `Element#cssSelector()` on an element with combining characters in the class or ID now produces the correct output. [#1984](https://github.com/jhy/jsoup/issues/1984). 
 
-## 1.19.1 (2025-03-04)
+## 1.19.1 (2025-Mar-04)
 
 ### Changes
 
