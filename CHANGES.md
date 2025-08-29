@@ -6,6 +6,7 @@
 * Previously cached child Elements of an Element were not correctly invalidated in `Node#replaceWith(Node)`, which could lead to incorrect results when subsequently calling `Element#children()`. [#2391](https://github.com/jhy/jsoup/issues/2391)
 * Attribute selector values are now compared literally without trimming. Previously, jsoup trimmed whitespace from selector values and from element attribute values, which could cause mismatches with browser behavior (e.g. `[attr=" foo "]`). Now matches align with the CSS specification and browser engines. [#2380](https://github.com/jhy/jsoup/issues/2380)
 * When using the JDK HttpClient, any system default proxy (`ProxySelector.getDefault()`) was ignored. Now, the system proxy is used if a per-request proxy is not set. [#2388](https://github.com/jhy/jsoup/issues/2388), [#2390](https://github.com/jhy/jsoup/pull/2390)
+* A ValidationException could be thrown in the adoption agency algorithm with particularly broken input. Now logged as a parse error. [#2393](https://github.com/jhy/jsoup/issues/2393)
 
 
 ## 1.21.2 (2025-Aug-25)
@@ -26,6 +27,7 @@
 * In `NodeTraversor`, if a last child element was removed during the `head()` call, the parent would be visited twice. [#2355](https://github.com/jhy/jsoup/issues/2355).
 * Cloning an Element that has an Attributes object would add an empty internal user-data attribute to that clone, which would cause unexpected results for `Attributes#size()` and `Attributes#isEmpty()`. [#2356](https://github.com/jhy/jsoup/issues/2356)
 * In a multithreaded application where multiple threads are calling `Element#children()` on the same element concurrently, a race condition could happen when the method was generating the internal child element cache (a filtered view of its child nodes). Since concurrent reads of DOM objects should be threadsafe without external synchronization, this method has been updated to execute atomically. [#2366](https://github.com/jhy/jsoup/issues/2366)
+* When parsing HTML with svg:script elements in SVG elements, don't enter the Text insertion mode, but continue to parse as foreign content. Otherwise, misnested HTML could then cause an IndexOutOfBoundsException. [#2374](https://github.com/jhy/jsoup/issues/2374)
 * Malformed HTML could throw an IndexOutOfBoundsException during the adoption agency. [#2377](https://github.com/jhy/jsoup/pull/2377).
 
 ## 1.21.1 (2025-Jun-23)
@@ -57,7 +59,6 @@
 * The HTML pretty-printer would incorrectly trim whitespace when text followed an inline element in a block element. [#2325](https://github.com/jhy/jsoup/issues/2325)
 * Custom tags with hyphens or other non-letter characters in their names now work correctly as Data or RcData tags. Their closing tags are now tokenized properly. [#2332](https://github.com/jhy/jsoup/issues/2332)
 * When cloning an Element, the clone would retain the source's cached child Element list (if any), which could lead to incorrect results when modifying the clone's child elements. [#2334](https://github.com/jhy/jsoup/issues/2334)
-* When parsing HTML with svg:script elements in SVG elements, don't enter the Text insertion mode, but continue to parse as foreign content. Otherwise, misnested HTML could then cause an IndexOutOfBoundsException. [#2374](https://github.com/jhy/jsoup/issues/2374) 
 
 ## 1.20.1 (2025-Apr-29)
 
