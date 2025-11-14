@@ -1768,4 +1768,30 @@ public class SelectorTest {
         assertSelectedIds(doc.select("div[data*='']"), "1", "2", "3");
     }
 
+    @Test void parseExceptionOnEmptyAbsKey() {
+        // was previously firing at match time, not eval time
+        String q = "[abs:!=]";
+        boolean threw = false;
+        try {
+            Evaluator e = Selector.evaluatorOf(q);
+        } catch (Selector.SelectorParseException ex) {
+            threw = true;
+            assertEquals("Absolute attribute key must have a name", ex.getMessage());
+        }
+        assertTrue(threw);
+    }
+
+    @Test void parseExceptionOnEmptyKeyVal() {
+        // was previously firing at match time, not eval time
+        String q = "[\"=\"]";
+        boolean threw = false;
+        try {
+            Evaluator e = Selector.evaluatorOf(q);
+        } catch (Selector.SelectorParseException ex) {
+            threw = true;
+            assertEquals("Quoted value must have content", ex.getMessage());
+        }
+        assertTrue(threw);
+    }
+
 }
