@@ -18,6 +18,9 @@
 * Build: added CI coverage for JDK 25 [#2403](https://github.com/jhy/jsoup/pull/2403)
 * Build: added a CI fuzzer for contextual fragment parsing (in addition to existing full body HTML and XML fuzzers). [oss-fuzz #14041](https://github.com/google/oss-fuzz/pull/14041)
 
+### Changes
+* Set a removal schedule of jsoup 1.24.1 for previously deprecated APIs.
+
 ### Bug Fixes
 * Previously cached child Elements of an Element were not correctly invalidated in `Node#replaceWith(Node)`, which could lead to incorrect results when subsequently calling `Element#children()`. [#2391](https://github.com/jhy/jsoup/issues/2391)
 * Attribute selector values are now compared literally without trimming. Previously, jsoup trimmed whitespace from selector values and from element attribute values, which could cause mismatches with browser behavior (e.g. `[attr=" foo "]`). Now matches align with the CSS specification and browser engines. [#2380](https://github.com/jhy/jsoup/issues/2380)
@@ -29,6 +32,8 @@
 * Cloning a `Parser` now preserves any custom `TagSet` applied to the parser. [#2422](https://github.com/jhy/jsoup/issues/2422), [#2423](https://github.com/jhy/jsoup/pull/2423)
 * Custom tags marked as `Tag.Void` now parse and serialize like the built-in void elements: they no longer consume following content, and the XML serializer emits the expected self-closing form. [#2425](https://github.com/jhy/jsoup/issues/2425)
 * The `<br>` element is once again classified as an inline tag (`Tag.isBlock() == false`), matching common developer expectations and its role as phrasing content in HTML, while pretty-printing and text extraction continue to treat it as a line break in the rendered output. [#2387](https://github.com/jhy/jsoup/issues/2387), [#2439](https://github.com/jhy/jsoup/issues/2439)
+* Fixed an intermittent truncation when fetching and parsing remote documents via `Jsoup.connect(url).get()`. On responses without a charset header, the initial charset sniff could sometimes (depending on buffering / `available()` behavior) be mistaken for end-of-stream and a partial parse reused, dropping trailing content. [#2448](https://github.com/jhy/jsoup/issues/2448)
+
 
 ### Internal Changes
 * Deprecated internal helper `org.jsoup.internal.Functions` (for removal in v1.23.1). This was previously used to support older Android API levels without full `java.util.function` coverage; jsoup now requires core library desugaring so this indirection is no longer necessary. [#2412](https://github.com/jhy/jsoup/pull/2412)
