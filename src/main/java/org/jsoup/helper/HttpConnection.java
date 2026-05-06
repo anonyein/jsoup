@@ -220,9 +220,10 @@ public class HttpConnection implements Connection {
     }
 
     @Override
+    @Deprecated
     public Connection sslSocketFactory(SSLSocketFactory sslSocketFactory) {
-	    req.sslSocketFactory(sslSocketFactory);
-	    return this;
+        req.sslSocketFactory(sslSocketFactory);
+        return this;
     }
 
     @Override
@@ -730,6 +731,7 @@ public class HttpConnection implements Connection {
         }
 
         @Override
+        @Deprecated
         public void sslSocketFactory(SSLSocketFactory sslSocketFactory) {
             this.sslSocketFactory = sslSocketFactory;
         }
@@ -1093,6 +1095,7 @@ public class HttpConnection implements Connection {
         }
 
         @Override
+        @Deprecated
         public Connection.Response bufferUp() {
             readByteDataUnchecked();
             return this;

@@ -5,7 +5,7 @@
 
   <groupId>org.jsoup</groupId>
   <artifactId>jsoup</artifactId>
-  <version>1.22.2-SNAPSHOT</version><!-- remember to update previous version below for japicmp -->
+  <version>1.23.1-SNAPSHOT</version><!-- remember to update previous version below for japicmp -->
   <url>https://jsoup.org/</url>
   <description>jsoup is a Java library that simplifies working with real-world HTML and XML. It offers an easy-to-use API for URL fetching, data parsing, extraction, and manipulation using DOM API methods, CSS, and xpath selectors. jsoup implements the WHATWG HTML5 specification, and parses HTML to the same DOM as modern browsers.</description>
   <inceptionYear>2009</inceptionYear>
@@ -33,9 +33,17 @@
 
   <properties>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <failsafe.excludedGroups>long-running</failsafe.excludedGroups>
   </properties>
 
   <build>
+    <!--
+      Compilation process to make the multi-release jar:
+      1. compile-package-info builds the base Java 8 package metadata before Java 11-only targets are visible
+      2. compile-java8-base and, on JDK 11+, compile-java11-overlay build the shipped production classes
+      3. check-java8-api and check-android21-api validate the Java 8 base API surface
+      4. bundle-manifest writes the OSGi metadata, then package assembles the multi-release jar
+    -->
     <plugins>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
@@ -58,6 +66,24 @@
             <id>default-testCompile</id>
             <phase>none</phase>
           </execution>
+          <execution>
+            <id>compile-package-info</id>
+            <phase>compile</phase>
+            <goals>
+              <goal>compile</goal>
+            </goals>
+            <configuration>
+              <source>8</source>
+              <target>8</target>
+              <includes>
+                <include>**/package-info.java</include>
+              </includes>
+              <!-- jspecify annotations reference ElementType.MODULE; Java 8-targeted compiles warn while reading that metadata. -->
+              <compilerArgs combine.children="append">
+                <arg>-Xlint:none</arg>
+              </compilerArgs>
+            </configuration>
+          </execution>
         </executions>
       </plugin>
 
@@ -68,7 +94,7 @@
         <version>1.27</version>
         <executions>
           <execution>
-            <id>api-java8</id>
+            <id>check-java8-api</id>
             <phase>compile</phase>
             <goals>
               <goal>check</goal>
@@ -86,7 +112,7 @@
             </configuration>
           </execution>
           <execution>
-            <id>api-android21</id>
+            <id>check-android21-api</id>
             <phase>compile</phase>
             <goals>
               <goal>check</goal>
@@ -233,6 +259,8 @@
             <Bundle-DocURL>https://jsoup.org/</Bundle-DocURL>
             <Export-Package>org.jsoup.*</Export-Package>
             <Import-Package>!org.jsoup.*,org.jspecify.annotations;version=!;resolution:=optional,*</Import-Package>
+            <!-- bnd scans class output as a flat bundle, so ignore its MR-JAR path error for the Java 11 overlay. -->
+            <_fixupmessages>Classes found in the wrong directory: *META-INF/versions/11*;restrict:=error;is:=ignore</_fixupmessages>
           </instructions>
         </configuration>
       </plugin>
@@ -268,20 +296,21 @@
         <configuration>
           <parallel>methods</parallel>
           <threadCount>8</threadCount>
+          <excludedGroups>${failsafe.excludedGroups}</excludedGroups>
         </configuration>
       </plugin>
       <plugin>
         <!-- API version compat check - https://siom79.github.io/japicmp/ -->
         <groupId>com.github.siom79.japicmp</groupId>
         <artifactId>japicmp-maven-plugin</artifactId>
-        <version>0.25.4</version>
+        <version>0.25.6</version>
         <configuration>
           <!-- hard code previous version; can't detect when running stateless on build server -->
           <oldVersion>
             <dependency>
               <groupId>org.jsoup</groupId>
               <artifactId>jsoup</artifactId>
-              <version>1.21.2</version>
+              <version>1.22.2</version>
               <type>jar</type>
             </dependency>
           </oldVersion>
@@ -355,15 +384,32 @@
             <artifactId>maven-compiler-plugin</artifactId>
             <executions>
               <execution>
-                <id>compile</id>
+                <id>compile-java8-base</id>
                 <phase>compile</phase>
                 <goals>
                   <goal>compile</goal>
+                </goals>
+                <configuration>
+                  <source>1.8</source>
+                  <target>1.8</target>
+                  <excludes>
+                    <!-- package-info classes are emitted once by compile-package-info as base jar metadata. -->
+                    <exclude>**/package-info.java</exclude>
+                  </excludes>
+                </configuration>
+              </execution>
+              <execution>
+                <id>compile-java8-tests</id>
+                <phase>test-compile</phase>
+                <goals>
                   <goal>testCompile</goal>
                 </goals>
                 <configuration>
                   <source>1.8</source>
                   <target>1.8</target>
+                  <compilerArgs combine.children="append">
+                    <arg>-Xlint:none</arg>
+                  </compilerArgs>
                 </configuration>
               </execution>
             </executions>
@@ -374,7 +420,7 @@
 
     <!-- Compiles the multi-release jar when executed on JDK11+ -->
     <profile>
-      <id>compile-multi-release</id>
+      <id>multi-release</id>
       <activation>
         <jdk>[11,2000)</jdk>
       </activation>
@@ -387,7 +433,7 @@
             <version>3.6.1</version>
             <executions>
               <execution>
-                <id>add-java11-test-source</id>
+                <id>add-java11-test-sources</id>
                 <phase>generate-test-sources</phase>
                 <goals>
                   <goal>add-test-source</goal>
@@ -407,18 +453,21 @@
             <executions>
 
               <execution>
-                <id>compile-java-8</id>
+                <id>compile-java8-base</id>
                 <phase>compile</phase>
                 <goals>
                   <goal>compile</goal>
                 </goals>
                 <configuration>
                   <release>8</release>
+                  <excludes>
+                    <exclude>**/package-info.java</exclude>
+                  </excludes>
                 </configuration>
               </execution>
 
               <execution>
-                <id>testCompile-java-11</id>
+                <id>compile-java11-tests</id>
                 <phase>test-compile</phase>
                 <goals>
                   <goal>testCompile</goal>
@@ -430,7 +479,7 @@
               </execution>
 
               <execution>
-                <id>compile-java-11</id>
+                <id>compile-java11-overlay</id>
                 <phase>compile</phase>
                 <goals>
                   <goal>compile</goal>
@@ -487,6 +536,12 @@
           </plugin>
         </plugins>
       </build>
+    </profile>
+    <profile>
+      <id>long-running</id>
+      <properties>
+        <failsafe.excludedGroups></failsafe.excludedGroups>
+      </properties>
     </profile>
     <profile>
       <id>failsafe</id>

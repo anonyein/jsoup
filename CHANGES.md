@@ -1,6 +1,14 @@
 # jsoup Changelog
 
-## 1.22.2 (PENDING)
+## 1.23.1 (pending)
+
+### Improvements
+* Reduced retained memory when parsing with source position tracking enabled (`Parser#setTrackPosition(true)`). Source ranges are now stored in compact parser-owned span records instead of node and attribute user data, and `Position` objects are created lazily when source ranges are read. This cuts tracked DOM retained size by about 50-60% on representative benchmark documents, while keeping `Node#sourceRange()`, `Element#endSourceRange()`, and `Attribute#sourceRange()` behavior intact. [#2498](https://github.com/jhy/jsoup/pull/2498)
+
+### Build Changes
+* Cleaned up the Maven build for the multi-release JAR so Java 8 and Java 11+ sources compile as separate source sets. This avoids spurious Java 8 compiler warnings from newer-language overlay sources, keeps long-running parser checks behind an explicit profile, and preserves the same published artifacts and runtime behavior.
+
+## 1.22.2 (2026-Apr-20)
 
 ### Improvements
 * Expanded and clarified `NodeTraversor` support for in-place DOM rewrites during `NodeVisitor.head()`. Current-node edits such as `remove`, `replace`, and `unwrap` now recover more predictably, while traversal stays within the original root subtree. This makes single-pass tree cleanup and normalization visitors easier to write, for example when unwrapping presentational elements or replacing text nodes as you walk the DOM. [#2472](https://github.com/jhy/jsoup/issues/2472)
@@ -15,7 +23,7 @@
 * `Cleaner` no longer duplicates enforced attributes when the input `Document` preserves attribute case. A case-variant source attribute is now replaced by the enforced attribute in the cleaned output. [#2476](https://github.com/jhy/jsoup/issues/2476)
 * If a per-request SOCKS proxy is configured, jsoup now avoids using the JDK `HttpClient`, because the JDK would silently ignore that proxy and attempt to connect directly. Those requests now fall back to the legacy `HttpURLConnection` transport instead, which does support SOCKS. [#2468](https://github.com/jhy/jsoup/issues/2468)
 * `Connection.Response.streamParser()` and `DataUtil.streamParser(Path, ...)` could fail on small inputs without a declared charset, if the initial 5 KB charset sniff fully consumed the input and closed it before the stream parse began. [#2483](https://github.com/jhy/jsoup/issues/2483)
-* In XML mode, doctypes with an internal subset (the `[...]` section inside `<!DOCTYPE ...>` used for entity declarations) now round-trip correctly. The subset is preserved as raw text only; entities are not expanded and external DTDs are not loaded. [#2486](https://github.com/jhy/jsoup/issues/2486)
+* In XML mode, doctypes with an internal subset, such as `<!DOCTYPE root [<!ENTITY name "value">]>`, now round-trip correctly. The subset is preserved as raw text only; entities are not expanded and external DTDs are not loaded. [#2486](https://github.com/jhy/jsoup/issues/2486)
 
 ### Build Changes
 * Migrated the integration test server from Jetty to Netty, which actively maintains support for our minimum JDK target (8). [#2491](https://github.com/jhy/jsoup/pull/2491)

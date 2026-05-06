@@ -420,10 +420,10 @@ public class Element extends Node implements Iterable<Element> {
     private static final String childElsMod = "jsoup.childElsMod";
 
     /** returns the cached child els, if they exist, and the modcount of our childnodes matches the stashed modcount */
+    @SuppressWarnings("unchecked")
     @Nullable List<Element> cachedChildren() {
         if (attributes == null || !attributes.hasUserData()) return null; // don't create empty userdata
         Map<String, Object> userData = attributes.userData();
-        //noinspection unchecked
         WeakReference<List<Element>> ref = (WeakReference<List<Element>>) userData.get(childElsKey);
         if (ref != null) {
             List<Element> els = ref.get();
@@ -1935,7 +1935,7 @@ public class Element extends Node implements Iterable<Element> {
 
     /**
      Get the source range (start and end positions) of the end (closing) tag for this Element. Position tracking must be
-     enabled prior to parsing the content.
+     enabled before parsing the content.
      @return the range of the closing tag for this element, or {@code untracked} if its range was not tracked.
      @see org.jsoup.parser.Parser#setTrackPosition(boolean)
      @see Node#sourceRange()
@@ -1943,7 +1943,7 @@ public class Element extends Node implements Iterable<Element> {
      @since 1.15.2
      */
     public Range endSourceRange() {
-        return Range.of(this, false);
+        return Range.ofEnd(this);
     }
 
     @Override
