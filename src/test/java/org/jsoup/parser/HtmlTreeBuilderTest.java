@@ -2,14 +2,11 @@ package org.jsoup.parser;
 
 
 import org.jsoup.Jsoup;
-import org.jsoup.nodes.DataNode;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 import org.jspecify.annotations.NullMarked;
 import org.junit.jupiter.api.Test;
-import java.io.Reader;
 import java.lang.annotation.Annotation;
-import java.lang.reflect.Method;
 import java.util.List;
 
 import static org.jsoup.parser.Parser.NamespaceHtml;
@@ -18,9 +15,20 @@ import static org.junit.jupiter.api.Assertions.*;
 public class HtmlTreeBuilderTest {
     @Test
     public void ensureSearchArraysAreSorted() {
-        List<Object[]> constants = HtmlTreeBuilderStateTest.findConstantArrays(HtmlTreeBuilder.class);
-        HtmlTreeBuilderStateTest.ensureSorted(constants);
-        assertEquals(14, constants.size());
+        List<Object[]> treeBuilderArrays = HtmlTreeBuilderStateTest.findConstantArrays(HtmlTreeBuilder.class);
+        HtmlTreeBuilderStateTest.ensureSorted(treeBuilderArrays);
+        assertEquals(3, treeBuilderArrays.size());
+
+        List<Object[]> tagOptionArrays = HtmlTreeBuilderStateTest.findConstantArrays(HtmlTagOptions.class);
+        HtmlTreeBuilderStateTest.ensureSorted(tagOptionArrays);
+        assertEquals(10, tagOptionArrays.size());
+    }
+
+    @Test
+    public void scopeSearchesMatchSpecBoundaries() {
+        ParseSettings settings = ParseSettings.htmlDefault;
+        assertTrue(Tag.valueOf("select", NamespaceHtml, settings).hasParserOption(HtmlTagOptions.Scope));
+        assertTrue(Tag.valueOf("template", NamespaceHtml, settings).hasParserOption(HtmlTagOptions.TableScope));
     }
 
     @Test
@@ -61,8 +69,39 @@ public class HtmlTreeBuilderTest {
         Element svgEl = new Element(Tag.valueOf("title", Parser.NamespaceSvg, settings), "");
         assertTrue(HtmlTreeBuilder.isSpecial(svgEl));
 
+        Element svgForeignObject = Jsoup.parse("<svg><foreignObject></foreignObject></svg>").expectFirst("foreignObject");
+        assertTrue(HtmlTreeBuilder.isSpecial(svgForeignObject));
+
         Element notSvgEl = new Element(Tag.valueOf("not-svg", Parser.NamespaceSvg, settings), "");
         assertFalse(HtmlTreeBuilder.isSpecial(notSvgEl));
+    }
+
+    @Test void parserOptionsTrackTagMutation() {
+        Tag tag = new Tag("not-html", NamespaceHtml);
+        Element el = new Element(tag, "");
+        assertFalse(HtmlTreeBuilder.isSpecial(el));
+
+        Tag direct = new Tag("div", NamespaceHtml);
+        assertTrue(HtmlTreeBuilder.isSpecial(new Element(direct, "")));
+
+        tag.name("div");
+        assertTrue(HtmlTreeBuilder.isSpecial(el));
+
+        tag.namespace(Parser.NamespaceMathml);
+        assertFalse(HtmlTreeBuilder.isSpecial(el));
+
+        tag.name("mi");
+        assertTrue(HtmlTreeBuilder.isSpecial(el));
+    }
+
+    @Test void parserOptionsAreNamespaceAware() {
+        Tag htmlOption = Tag.valueOf("option", NamespaceHtml, ParseSettings.htmlDefault);
+        assertTrue(htmlOption.hasParserOption(HtmlTagOptions.ImpliedEnd));
+        assertTrue(htmlOption.hasParserOption(HtmlTagOptions.SelectScopeMember));
+
+        Tag svgOption = Tag.valueOf("option", Parser.NamespaceSvg, ParseSettings.htmlDefault);
+        assertFalse(svgOption.hasParserOption(HtmlTagOptions.ImpliedEnd));
+        assertFalse(svgOption.hasParserOption(HtmlTagOptions.SelectScopeMember));
     }
 
     @Test void customRcdataTag() {
