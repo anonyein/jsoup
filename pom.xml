@@ -310,7 +310,7 @@
         <!-- API version compat check - https://siom79.github.io/japicmp/ -->
         <groupId>com.github.siom79.japicmp</groupId>
         <artifactId>japicmp-maven-plugin</artifactId>
-        <version>0.25.6</version>
+        <version>0.26.0</version>
         <configuration>
           <!-- hard code previous version; can't detect when running stateless on build server -->
           <oldVersion>
@@ -626,7 +626,7 @@
       <dependency>
         <groupId>io.netty</groupId>
         <artifactId>netty-bom</artifactId>
-        <version>4.2.13.Final</version>
+        <version>4.2.14.Final</version>
         <type>pom</type>
         <scope>import</scope>
       </dependency>
