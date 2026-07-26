@@ -35,7 +35,9 @@ import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.Authenticator;
+import java.net.HttpCookie;
 import java.net.MalformedURLException;
+import java.net.URI;
 import java.net.URL;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
@@ -214,6 +216,53 @@ public class ConnectTest {
         assertEquals("hello", ihVal("Random-Header-name", doc));
         assertEquals("cross-site", ihVal("Sec-Fetch-Site", doc));
         assertEquals("cors", ihVal("Sec-Fetch-Mode", doc));
+    }
+
+    @Test
+    public void credentialsSurviveSameOriginRedirect() throws IOException {
+        // Explicit credentials remain available while the redirect stays within the same origin.
+        Document doc = Jsoup.connect(origin().redirect.url())
+            .data(RedirectRoute.LocationParam, echoUrl)
+            .header("Authorization", "Bearer same-origin")
+            .header("Cookie", "HeaderCookie=yes")
+            .cookie("RequestCookie", "yes")
+            .get();
+
+        assertEquals("Bearer same-origin", ihVal("Authorization", doc));
+        assertEquals("yes", ihVal("Cookie: HeaderCookie", doc));
+        assertEquals("yes", ihVal("Cookie: RequestCookie", doc));
+    }
+
+    @Test
+    public void credentialsDoNotCrossRedirectOrigins() throws IOException {
+        // Explicit credentials are dropped, while the cookie store can apply cookies scoped to the target.
+        String targetUrl = echoUrl.replace("localhost", "127.0.0.1");
+        Connection connection = Jsoup.connect(origin().redirect.url())
+            .data(RedirectRoute.LocationParam, targetUrl)
+            .header("Authorization", "Bearer original-origin")
+            .header("Cookie", "HeaderCookie=yes")
+            .header("Cookie2", "LegacyCookie=yes")
+            .cookie("RequestCookie", "yes")
+            .header("Random-Header-name", "hello");
+
+        HttpCookie targetCookie = new HttpCookie("StoredCookie", "yes");
+        targetCookie.setPath("/");
+        targetCookie.setVersion(0);
+        connection.cookieStore().add(URI.create(targetUrl), targetCookie);
+
+        Document doc = connection.get();
+        assertEquals(targetUrl, doc.location());
+        assertNull(ihVal("Authorization", doc));
+        assertNull(ihVal("Cookie2", doc));
+        assertNull(ihVal("Cookie: HeaderCookie", doc));
+        assertNull(ihVal("Cookie: RequestCookie", doc));
+        assertEquals("yes", ihVal("Cookie: StoredCookie", doc));
+        assertEquals("hello", ihVal("Random-Header-name", doc));
+
+        assertFalse(connection.request().hasHeader("Authorization"));
+        assertFalse(connection.request().hasHeader("Cookie"));
+        assertFalse(connection.request().hasHeader("Cookie2"));
+        assertTrue(connection.request().cookies().isEmpty());
     }
 
     @Test
@@ -577,27 +626,155 @@ public class ConnectTest {
         assertTrue(threw);
     }
 
-    @Test public void doesNotPostFor302() throws IOException {
-        final Document doc = Jsoup.connect(origin().redirect.url())
-            .data("Hello", "there")
+    @ParameterizedTest
+    @ValueSource(ints = {301, 302, 303})
+    public void redirectsPostToGet(int statusCode) throws IOException {
+        // POST redirects use GET and do not carry the original content into the new request.
+        Document doc = Jsoup.connect(origin().redirect.url())
             .data(RedirectRoute.LocationParam, origin().echo.url())
-            .post();
+            .data(RedirectRoute.CodeParam, Integer.toString(statusCode))
+            .requestBody("Hello there")
+            .header(CONTENT_TYPE, "text/plain")
+            .header("Content-Encoding", "identity")
+            .header("Content-Language", "en")
+            .header("Content-Location", "/original")
+            .header("Digest", "sha-256=:test:")
+            .header("Last-Modified", "Sat, 25 Jul 2026 00:00:00 GMT")
+            .header("Random-Header-name", "hello")
+            .method(Method.POST)
+            .execute()
+            .parse();
 
         assertEquals(origin().echo.url(), doc.location());
         assertEquals("GET", ihVal("Method", doc));
-        assertNull(ihVal("Hello", doc)); // data not sent
+        assertNull(ihVal("Post Data", doc));
+        assertNull(ihVal(CONTENT_TYPE, doc));
+        assertNull(ihVal("Content-Encoding", doc));
+        assertNull(ihVal("Content-Language", doc));
+        assertNull(ihVal("Content-Location", doc));
+        assertNull(ihVal("Digest", doc));
+        assertNull(ihVal("Last-Modified", doc));
+        assertEquals("hello", ihVal("Random-Header-name", doc));
     }
 
-    @Test public void doesPostFor307() throws IOException {
-        final Document doc = Jsoup.connect(origin().redirect.url())
+    @Test public void clearsFormDataWhenRedirectingPostToGet() throws IOException {
+        // Form data from the original POST must not be submitted to the redirect target.
+        Document doc = Jsoup.connect(origin().redirect.url())
             .data("Hello", "there")
             .data(RedirectRoute.LocationParam, origin().echo.url())
-            .data(RedirectRoute.CodeParam, "307")
             .post();
+
+        assertEquals("GET", ihVal("Method", doc));
+        assertNull(ihVal("Hello", doc));
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {301, 302})
+    public void preservesPutFor301And302(int statusCode) throws IOException {
+        // Unlike POST, other methods and their content are preserved for 301 and 302.
+        Document doc = Jsoup.connect(origin().redirect.url())
+            .data(RedirectRoute.LocationParam, origin().echo.url())
+            .data(RedirectRoute.CodeParam, Integer.toString(statusCode))
+            .requestBody("Hello there")
+            .header(CONTENT_TYPE, "text/plain")
+            .method(Method.PUT)
+            .execute()
+            .parse();
+
+        assertEquals(origin().echo.url(), doc.location());
+        assertEquals("PUT", ihVal("Method", doc));
+        assertEquals("Hello there", ihVal("Post Data", doc));
+        assertEquals("text/plain", ihVal(CONTENT_TYPE, doc));
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {307, 308})
+    public void preservesPostFor307And308(int statusCode) throws IOException {
+        // 307 and 308 preserve both the method and content.
+        Document doc = Jsoup.connect(origin().redirect.url())
+            .data(RedirectRoute.LocationParam, origin().echo.url())
+            .data(RedirectRoute.CodeParam, Integer.toString(statusCode))
+            .requestBody("Hello there")
+            .header(CONTENT_TYPE, "text/plain")
+            .method(Method.POST)
+            .execute()
+            .parse();
 
         assertEquals(origin().echo.url(), doc.location());
         assertEquals("POST", ihVal("Method", doc));
+        assertEquals("Hello there", ihVal("Post Data", doc));
+        assertEquals("text/plain", ihVal(CONTENT_TYPE, doc));
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {307, 308})
+    public void preservesMultipartEncodingForRedirect(int statusCode) throws IOException {
+        // The generated multipart boundary is reused when the request content is replayed.
+        Document doc = Jsoup.connect(origin().redirect.url())
+            .data(RedirectRoute.LocationParam, origin().echo.url())
+            .data(RedirectRoute.CodeParam, Integer.toString(statusCode))
+            .data("Hello", "there")
+            .header(CONTENT_TYPE, MULTIPART_FORM_DATA)
+            .method(Method.POST)
+            .execute()
+            .parse();
+
+        assertEquals("POST", ihVal("Method", doc));
+        assertTrue(ihVal(CONTENT_TYPE, doc).startsWith(MULTIPART_FORM_DATA + "; boundary="));
         assertEquals("there", ihVal("Hello", doc));
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {301, 308})
+    public void doesNotReplayRequestBodyStream(int statusCode) {
+        // A consumed stream cannot be safely replayed without buffering or a fresh stream from the caller.
+        IOException exception = assertThrows(IOException.class, () -> Jsoup.connect(origin().redirect.url())
+            .data(RedirectRoute.LocationParam, origin().echo.url())
+            .data(RedirectRoute.CodeParam, Integer.toString(statusCode))
+            .requestBodyStream(new ByteArrayInputStream("Hello there".getBytes(StandardCharsets.UTF_8)))
+            .header(CONTENT_TYPE, "text/plain")
+            .method(Method.PUT)
+            .execute());
+
+        assertTrue(exception.getMessage().contains("streamed request body"));
+    }
+
+    @Test public void doesNotReplayMultipartStream() {
+        // Multipart file streams have the same one-shot behavior as a direct request body stream.
+        IOException exception = assertThrows(IOException.class, () -> Jsoup.connect(origin().redirect.url())
+            .data(RedirectRoute.LocationParam, origin().echo.url())
+            .data(RedirectRoute.CodeParam, "308")
+            .data("file", "hello.txt", new ByteArrayInputStream("Hello there".getBytes(StandardCharsets.UTF_8)))
+            .method(Method.POST)
+            .execute());
+
+        assertTrue(exception.getMessage().contains("streamed request body"));
+    }
+
+    @Test public void preservesHeadFor303() throws IOException {
+        // A 303 continues to use HEAD when the original request was HEAD.
+        Connection.Response res = Jsoup.connect(origin().redirect.url())
+            .data(RedirectRoute.LocationParam, origin().echo.url())
+            .data(RedirectRoute.CodeParam, "303")
+            .method(Method.HEAD)
+            .execute();
+
+        assertEquals(origin().echo.url(), res.url().toExternalForm());
+        assertEquals(Method.HEAD, res.method());
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {201, 300, 304, 305, 306})
+    public void doesNotFollowLocationForOtherStatuses(int statusCode) throws IOException {
+        // A Location header alone does not make the response an automatic redirect.
+        Connection.Response res = Jsoup.connect(origin().redirect.url())
+            .data(RedirectRoute.LocationParam, origin().echo.url())
+            .data(RedirectRoute.CodeParam, Integer.toString(statusCode))
+            .ignoreContentType(true)
+            .execute();
+
+        assertEquals(statusCode, res.statusCode());
+        assertEquals(origin().redirect.path(), res.url().getPath());
     }
 
     @Test public void getUtf8Bom() throws IOException {
