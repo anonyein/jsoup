@@ -4,10 +4,15 @@
 
 ### Improvements
 * Improved consecutive `StreamParser.selectFirst(...)` calls during progressive parsing, so later matches are returned with their parsed contents when earlier selections have left them as parser lookahead. E.g., given `<title>One</title><p id=hit>Full</p><p>Next</p>`, selecting `title` and then `#hit` now advances the partial lookahead and returns `<p id="hit">Full</p>`, rather than returning an empty `<p id="hit"></p>` before its content is parsed. The updated readiness tracking follows StreamParser's normal emission order across implicit HTML structure and parser recovery. [#2551](https://github.com/jhy/jsoup/pull/2551)
+* Improved XML parser performance and memory use for documents with many nested namespace declarations by recording namespace changes within each element scope. [#2556](https://github.com/jhy/jsoup/pull/2556)
 
 ### Bug Fixes
 * Fixed the JDK `HttpClient` implementation to accept responses without a `Content-Type` header, matching the `HttpURLConnection` implementation. [#2549](https://github.com/jhy/jsoup/pull/2549)
 * Fixed HTTP response content-type matching to handle media types case-insensitively and recognize structured `+xml` suffixes, including vendor-specific media types. [#2550](https://github.com/jhy/jsoup/pull/2550)
+* Corrected multipart form encoding to percent-escape CR and LF in field names and filenames, matching the HTML form submission specification. Multipart file content-types containing CR or LF are now rejected with a `ValidationException`. [#2555](https://github.com/jhy/jsoup/pull/2555)
+* Aligned trailing comment placement with the HTML specification: comments after `</body>` remain children of the `html` element, while comments after `</html>` remain children of the document. [#2557](https://github.com/jhy/jsoup/pull/2557)
+* When using the optional `re2j` regular expression engine, heap exhaustion caused by complex selector patterns during matching is now normalized to a `ValidationException` with a `Pattern complexity error` message.
+
 
 ## 1.23.1 (2026-Jul-30)
 

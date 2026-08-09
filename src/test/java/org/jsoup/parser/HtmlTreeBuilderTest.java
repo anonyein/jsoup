@@ -64,10 +64,12 @@ public class HtmlTreeBuilderTest {
             streamParser.expectFirst("title");
             Element open = streamParser.document().expectFirst("#hit");
             assertTrue(treeBuilder.isOpen(open));
+            assertFalse(treeBuilder.isOpen(treeBuilder.doc));
 
             List<Element> openElements = new ArrayList<>();
             treeBuilder.copyOpenElementsTo(openElements);
             assertTrue(openElements.contains(open));
+            assertFalse(openElements.contains(treeBuilder.doc));
 
             // closing before EOF releases the open stack without marking the document complete
             streamParser.close();
@@ -132,6 +134,23 @@ public class HtmlTreeBuilderTest {
         Tag svgOption = Tag.valueOf("option", Parser.NamespaceSvg, ParseSettings.htmlDefault);
         assertFalse(svgOption.hasParserOption(HtmlTagOptions.ImpliedEnd));
         assertFalse(svgOption.hasParserOption(HtmlTagOptions.SelectScopeMember));
+    }
+
+    @Test void impliedEndTagsOnlyPopHtmlElements() {
+        // same-named foreign elements do not participate in HTML's implied end tag rules
+        HtmlTreeBuilder treeBuilder = new HtmlTreeBuilder();
+        for (String namespace : new String[]{Parser.NamespaceSvg, Parser.NamespaceMathml}) {
+            Element foreignOption = new Element(new Tag("option", namespace), "");
+            Element htmlOption = new Element(new Tag("option", NamespaceHtml), "");
+            treeBuilder.stack.add(foreignOption);
+            treeBuilder.stack.add(htmlOption);
+
+            treeBuilder.generateImpliedEndTags("p");
+
+            assertEquals(1, treeBuilder.stack.size(), namespace);
+            assertSame(foreignOption, treeBuilder.currentElement(), namespace);
+            treeBuilder.stack.clear();
+        }
     }
 
     @Test void customRcdataTag() {
