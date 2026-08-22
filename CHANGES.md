@@ -24,6 +24,7 @@
   * Valid HTML names that are not XML QNames, such as `a:b:c`, are normalized. Attributes that still cannot be represented are skipped, and unrepresentable elements no longer change the surrounding tree.
 * Fixed `W3CDom` conversion of programmatically created or renamed elements whose names can be represented in a jsoup HTML DOM but are not valid XML names, such as `1abc`. These names are now normalized (e.g. `_1abc`) instead of causing a `NullPointerException`. [#2560](https://github.com/jhy/jsoup/issues/2560)
 * Fixed XML doctype serialization when a system identifier contains a double quote, which could otherwise produce invalid XML. [#2571](https://github.com/jhy/jsoup/issues/2571)
+* Supplementary Unicode characters are now escaped correctly when serializing with non-UTF, non-ASCII output charsets such as ISO-8859-1. Previously, characters could be emitted unescaped when their low 16-bit value was representable by the configured charset, causing replacement or corruption when the output was encoded. [#2578](https://github.com/jhy/jsoup/issues/2578)
 * Fixed the JDK `HttpClient` implementation to accept responses without a `Content-Type` header, matching the `HttpURLConnection` implementation. [#2549](https://github.com/jhy/jsoup/pull/2549)
 * Fixed HTTP response content-type matching to handle media types case-insensitively and recognize structured `+xml` suffixes, including vendor-specific media types. [#2550](https://github.com/jhy/jsoup/pull/2550)
 * Corrected multipart form encoding to percent-escape CR and LF in field names and filenames, matching the HTML form submission specification. Multipart file content-types containing CR or LF are now rejected with a `ValidationException`. [#2555](https://github.com/jhy/jsoup/pull/2555)
@@ -31,6 +32,9 @@
 * When using the optional `re2j` regular expression engine, heap exhaustion caused by complex selector patterns during matching is now normalized to a `ValidationException` with a `Pattern complexity error` message.
 * Fixed parsing of malformed SVG and MathML content so that breakout HTML tags are placed according to the HTML specification. [#2562](https://github.com/jhy/jsoup/issues/2562)
 * Fixed deeply nested malformed HTML parsing that could lose the document body because stack lookups did not align to the configured maximum parser depth. [#2569](https://github.com/jhy/jsoup/pull/2569)
+* Aligned RCDATA, RAWTEXT, and script-data parsing with the HTML specification: malformed end tags no longer consume following markup, unclosed `title`/`textarea` content stays text through EOF, and custom text tags match exact names. [#2577](https://github.com/jhy/jsoup/pull/2577)
+* Improved URL validation during HTTP/HTTPS URL resolution and cleaning; resolved URLs without a host are now rejected instead of being accepted based only on their scheme prefix, aligning to RFC 9110. Valid relative links and non-HTTP(S) schemes are unchanged. [#2579](https://github.com/jhy/jsoup/pull/2579)
+* Redirects with malformed single-slash HTTP locations now use standard URL resolution to align with browsers. [#2580](https://github.com/jhy/jsoup/pull/2580)
 
 ## 1.23.1 (2026-Jul-30)
 
