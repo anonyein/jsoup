@@ -1045,8 +1045,7 @@ public class HtmlParserTest {
 
     @Test public void handlesMisnestedAInDivs() {
         String h = "<a 1><div 2><div 3><a 4>child</a></div></div></a>";
-        String w = "<a 1></a> <div 2> <a 1=\"\"></a> <div 3> <a 1=\"\"></a><a 4>child</a> </div> </div>"; // chrome checked
-        // todo - come back to how we copy the attributes, to keep boolean setting (not ="")
+        String w = "<a 1></a> <div 2> <a 1></a> <div 3> <a 1></a><a 4>child</a> </div> </div>";
 
         Document doc = Jsoup.parse(h);
         assertEquals(
@@ -1236,8 +1235,8 @@ public class HtmlParserTest {
         assertEquals("<3:25>: Invalid character reference: missing semicolon on [&amp]", errors.get(5).toString());
         assertEquals("<3:36>: Invalid character reference: character [1114112] outside of valid range", errors.get(6).toString());
         assertEquals("<3:48>: Unexpected EndTag token [</div>] when in state [InBody]", errors.get(7).toString());
-        assertEquals("<3:53>: Unexpectedly reached end of file (EOF) in input state [TagName]", errors.get(8).toString());
-        assertEquals("<3:53>: Unexpected EOF token [] when in state [InBody]", errors.get(9).toString());
+        assertEquals("<3:52>: Unexpectedly reached end of file (EOF) in input state [TagName]", errors.get(8).toString());
+        assertEquals("<3:52>: Unexpected EOF token [] when in state [InBody]", errors.get(9).toString());
     }
 
     @Test public void tracksLimitedErrorsWhenRequested() {
@@ -2034,6 +2033,20 @@ public class HtmlParserTest {
 
         want = "<html><head></head><body><tr><td><img></td></tr></body></html>";
         assertEquals(want, TextUtil.stripNewlines(doc.html()));
+    }
+
+    @Test void templateFragmentContextCannotBeClosedByInputAtEof() {
+        Document doc = Jsoup.parseBodyFragment("<template id=context></template>");
+        Element template = doc.expectFirst("#context");
+        template.html("</template><p><template>");
+        assertEquals("<p><template></template></p>", TextUtil.stripNewlines(template.html()));
+    }
+
+    @Test void templateFragmentCanCloseNestedTemplate() {
+        Document doc = Jsoup.parseBodyFragment("<template id=context></template>");
+        Element template = doc.expectFirst("#context");
+        template.html("</template><p><template><b>One</b></template><i>Two</i>");
+        assertEquals("<p><template><b>One</b></template><i>Two</i></p>", TextUtil.stripNewlines(template.html()));
     }
 
     @Test void templateFragment() {
