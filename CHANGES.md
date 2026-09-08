@@ -2,9 +2,14 @@
 
 ## 1.24.1 (Pending)
 
+### Changes
+* Removed APIs previously deprecated and scheduled for removal in 1.24.1. [#2597](https://github.com/jhy/jsoup/pull/2597)
+* `Response.bodyStream()` now observes the configured max body size and request timeout, consistent with the other response body methods. The default max size is 2 MB. You can configure that with `maxBodySize(0)` before executing the request to disable the cap. `Response.isTruncated()` reports when the decoded response content exceeded the configured limit. [#2598](https://github.com/jhy/jsoup/pull/2598)
+
 ### Bug Fixes
 * Standardized parser normalization of tag and attribute names so that HTML comparisons use ASCII-only case folding, and accepted control characters are preserved, aligning name handling to the HTML and XML specs. [#2594](https://github.com/jhy/jsoup/issues/2594)
 * Named character references without a semicolon before `-` or `_` now decode correctly in attribute values, matching HTML and browser behavior (e.g., `&copy-` becomes `©-`). [#2588](https://github.com/jhy/jsoup/issues/2588)
+* Support downloads > 2GB via `Response.bodyStream()` when `maxBodySize(0)` is configured. [#2593](https://github.com/jhy/jsoup/issues/2593)
 
 ## 1.23.2 (2026-Aug-26)
 
@@ -156,7 +161,7 @@
 ### Changes
 
 * Removed previously deprecated methods. [#2317](https://github.com/jhy/jsoup/pull/2317)
-* Deprecated the `:matchText` pseduo-selector due to its side effects on the DOM; use the new `::textnode` selector and the `Element#selectNodes(String css, Class type)` method instead. [#2343](https://github.com/jhy/jsoup/pull/2343)
+* Deprecated the `:matchText` pseduo-selector due to its side effects on the DOM; use the new `::text` selector and the `Element#selectNodes(String css, Class type)` method instead. [#2343](https://github.com/jhy/jsoup/pull/2343)
 * Deprecated `Connection.Response#bufferUp()` in lieu of `Connection.Response#readFully()` which can throw a checked IOException.
 * Deprecated internal methods `Validate#ensureNotNull` (replaced by typed `Validate#expectNotNull`); protected HTML appenders from Attribute and Node.
 * If you happen to be using any of the deprecated methods, please take the opportunity now to migrate away from them, as they will be removed in a future release.
