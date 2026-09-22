@@ -12,6 +12,7 @@ import org.jsoup.nodes.Element;
 import org.jsoup.nodes.FormElement;
 import org.jsoup.nodes.Node;
 import org.jsoup.nodes.NodeInternals;
+import org.jsoup.nodes.ProcessingInstruction;
 import org.jsoup.nodes.TextNode;
 import org.jspecify.annotations.Nullable;
 
@@ -357,6 +358,11 @@ public class HtmlTreeBuilder extends TreeBuilder {
         return fragmentParsing && contextElement != null && contextElement.elementIs(normalName, NamespaceHtml);
     }
 
+    /** Tests whether the parser is inside a template or using a template fragment context. */
+    boolean isParsingTemplateContents() {
+        return onStack("template") || fragmentContextIs("template");
+    }
+
     void error(HtmlTreeBuilderState state) {
         if (parser.getErrors().canAddError())
             parser.getErrors().add(new ParseError(reader, "Unexpected %s token [%s] when in state [%s]",
@@ -434,14 +440,10 @@ public class HtmlTreeBuilder extends TreeBuilder {
         return el;
     }
 
-    FormElement insertFormElement(Token.StartTag startTag, boolean onStack, boolean checkTemplateStack) {
+    /** Inserts a form and leaves the form pointer unset while parsing template contents. */
+    FormElement insertFormElement(Token.StartTag startTag, boolean onStack) {
         FormElement el = (FormElement) createElementFor(startTag, NamespaceHtml, false);
-
-        if (checkTemplateStack) {
-            if(!onStack("template"))
-                setFormElement(el);
-        } else
-            setFormElement(el);
+        if (!isParsingTemplateContents()) setFormElement(el);
 
         doInsertElement(el);
         if (!onStack) pop();
@@ -532,7 +534,15 @@ public class HtmlTreeBuilder extends TreeBuilder {
 
     /** Inserts a comment into the supplied target. */
     void insertCommentNode(Token.Comment token, Element target) {
-        Comment node = new Comment(token.getData());
+        Node node;
+        if (token.isPI()) {
+            Token.PI piToken = token.asPI();
+            ProcessingInstruction instruction = new ProcessingInstruction(piToken.target(), token.getData());
+            NodeInternals.sourceDataStart(instruction, piToken.dataStartPos);
+            node = instruction;
+        } else {
+            node = new Comment(token.getData());
+        }
         insertionTarget(target).appendChild(node);
         onNodeInserted(node);
     }
@@ -552,6 +562,7 @@ public class HtmlTreeBuilder extends TreeBuilder {
      */
     void insertCharacterNode(Token.Character characterToken, boolean replace) {
         characterToken.normalizeNulls(replace);
+        if (characterToken.getData().isEmpty()) return;
         Element el = currentElOrDoc();
         insertCharacterToElement(characterToken, el);
     }

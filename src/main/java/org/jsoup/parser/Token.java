@@ -412,7 +412,7 @@ abstract class Token {
         }
     }
 
-    final static class Comment extends Token {
+    static class Comment extends Token {
         private final TokenData data = new TokenData();
         boolean bogus = false;
 
@@ -450,6 +450,7 @@ abstract class Token {
 
     static class Character extends Token {
         final TokenData data = new TokenData();
+        boolean hasNull; // avoids rescanning text for nulls
 
         Character() {
             super(TokenType.Character);
@@ -461,22 +462,21 @@ abstract class Token {
             this.startPos = source.startPos;
             this.endPos = source.endPos;
             this.data.set(source.data.value());
+            this.hasNull = source.hasNull;
         }
 
         @Override
         Token reset() {
             super.reset();
             data.reset();
+            hasNull = false;
             return this;
         }
 
+        /** Sets arbitrary character data, including CDATA which may contain nulls. */
         Character data(String str) {
             data.set(str);
-            return this;
-        }
-
-        Character append(String str) {
-            data.append(str);
+            hasNull = str.indexOf(TokeniserState.nullChar) != -1;
             return this;
         }
 
@@ -493,13 +493,14 @@ abstract class Token {
          Normalize null chars in the data. If replace is true, replaces with the replacement char; if false, removes.
          */
         public void normalizeNulls(boolean replace) {
+            if (!hasNull) return;
             String data = this.data.value();
-            if (data.indexOf(TokeniserState.nullChar) == -1) return;
 
             data = (replace ?
                 data.replace(TokeniserState.nullChar, Tokeniser.replacementChar) :
                 data.replace(nullString, ""));
             this.data.set(data);
+            hasNull = false;
         }
 
         private static final String nullString = String.valueOf(TokeniserState.nullChar);
@@ -518,11 +519,34 @@ abstract class Token {
 
     }
 
-    /**
-     XmlDeclaration - extends Tag for pseudo attribute support
-     */
+    /** A processing instruction. Extends Comment to reuse its data buffer and tree-builder handling. */
+    final static class PI extends Comment {
+        final TokenData target = new TokenData();
+        int dataStartPos = UnsetPos;
+
+        /** Resets this token for reuse. */
+        @Override PI reset() {
+            super.reset();
+            target.reset();
+            dataStartPos = UnsetPos;
+            return this;
+        }
+
+        /** Returns the instruction target. */
+        String target() {
+            return target.value();
+        }
+
+        /** Formats this token as a processing instruction. */
+        @Override public String toString() {
+            String data = getData();
+            return "<?" + target() + (data.isEmpty() ? "" : " " + data) + "?>";
+        }
+    }
+
+    /** An XML or markup declaration. Extends Tag to reuse its name and attributes during tokenization. */
     final static class XmlDecl extends Tag {
-        boolean isDeclaration = true; // <!..>, or <?...?> if false (a processing instruction)
+        boolean isDeclaration = true; // <!name ...>, or <?xml ...?> if false
 
         public XmlDecl(TreeBuilder treeBuilder) {
             super(TokenType.XmlDecl, treeBuilder);
@@ -609,6 +633,16 @@ abstract class Token {
 
     final XmlDecl asXmlDecl() {
         return (XmlDecl) this;
+    }
+
+    /** Returns whether this token is a processing instruction. */
+    final boolean isPI() {
+        return this instanceof PI;
+    }
+
+    /** Returns this token as a processing instruction. */
+    final PI asPI() {
+        return (PI) this;
     }
 
     final boolean isEOF() {

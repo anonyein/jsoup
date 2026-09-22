@@ -40,6 +40,8 @@ final class Tokeniser {
     private TokeniserState state = TokeniserState.Data; // current tokenisation state
     @Nullable private Token emitPending = null; // the token we are about to emit on next read
     private boolean isEmitPending = false;
+    private boolean ignoreLeadingLf; // skip one newline immediately after pre, listing, or textarea
+    boolean attributeFragment; // parsing attributes without a surrounding tag
     final TokenData dataBuffer = new TokenData(); // buffers data looking for </script>
 
     final Document.OutputSettings.Syntax syntax; // html or xml syntax; affects processing of xml declarations vs as bogus comments
@@ -49,6 +51,7 @@ final class Tokeniser {
     final Token.Character charPending = new Token.Character();
     final Token.Doctype doctypePending = new Token.Doctype(); // doctype building up
     final Token.Comment commentPending = new Token.Comment(); // comment building up
+    final Token.PI piPending = new Token.PI(); // processing instruction building up
     final Token.XmlDecl xmlDeclPending; // xml decl building up
     @Nullable private String lastStartTag; // the last start tag emitted, to test appropriate end tag
 
@@ -65,6 +68,11 @@ final class Tokeniser {
     }
 
     Token read() {
+        if (ignoreLeadingLf && !isEmitPending && (reader.matches('\r') || reader.matches('\n'))) {
+            if (reader.consume() == '\r') reader.matchConsume("\n");
+            charStartPos = reader.pos();
+            ignoreLeadingLf = false;
+        }
         while (!isEmitPending) {
             state.read(this, reader);
         }
@@ -80,6 +88,7 @@ final class Tokeniser {
     }
 
     void emit(Token token) {
+        ignoreLeadingLf = false;
         Validate.isFalse(isEmitPending);
 
         emitPending = token;
@@ -98,23 +107,44 @@ final class Tokeniser {
         }
     }
 
+    /** Buffers text for the next character token. */
     void emit(final String str) {
+        if (str.isEmpty()) return;
+        if (ignoreLeadingLf) {
+            ignoreLeadingLf = false;
+            // literal newlines were consumed before tokenization; this LF came from a reference
+            if (str.equals("\n")) {
+                charStartPos = reader.pos();
+                return;
+            }
+        }
         // buffer strings up until last string token found, to emit only one token for a run of character refs etc.
         // does not set isEmitPending; read checks that
         // todo move "<" to '<'...
-        charPending.append(str);
+        // bulk literal runs stop at null; decoded references are handled separately
+        charPending.data.append(str);
         charPending.startPos(charStartPos);
         charPending.endPos(reader.pos());
     }
 
+    /** Buffers a character for the next character token. */
     void emit(char c) {
+        ignoreLeadingLf = false;
         charPending.data.append(c);
+        if (c == TokeniserState.nullChar) charPending.hasNull = true;
         charPending.startPos(charStartPos);
         charPending.endPos(reader.pos());
     }
 
+    /** Buffers a decoded character reference. */
     void emit(int[] codepoints) {
+        if (codepoints[0] == 0) charPending.hasNull = true; // only numeric references can produce null
         emit(new String(codepoints, 0, codepoints.length));
+    }
+
+    /** Skips the next character if it is a newline. */
+    void ignoreLeadingLf() {
+        ignoreLeadingLf = true;
     }
 
     void transition(TokeniserState newState) {
@@ -165,7 +195,7 @@ final class Tokeniser {
             }
             // todo: check for extra illegal unicode points as parse errors - described https://html.spec.whatwg.org/multipage/syntax.html#character-references and in Infra
             // The numeric character reference forms described above are allowed to reference any code point excluding U+000D CR, noncharacters, and controls other than ASCII whitespace.
-            if (charval == -1 || charval > 0x10FFFF) {
+            if (charval == -1 || charval > 0x10FFFF || (charval == 0 && syntax == Document.OutputSettings.Syntax.html)) {
                 characterReferenceError("character [%s] outside of valid range", charval);
                 codeRef[0] = replacementChar;
             } else {
@@ -233,8 +263,14 @@ final class Tokeniser {
     }
 
     void emitTagPending() {
-        tagPending.finaliseTag();
-        emit(tagPending);
+        if (attributeFragment) {
+            if (state != TokeniserState.BeforeAttributeValue) // that state already reported the missing value
+                error("Unexpected tag closer in attribute input");
+            emit(new Token.EOF());
+        } else {
+            tagPending.finaliseTag();
+            emit(tagPending);
+        }
     }
 
     void createCommentPending() {
@@ -248,6 +284,16 @@ final class Tokeniser {
     void createBogusCommentPending() {
         commentPending.reset();
         commentPending.bogus = true;
+    }
+
+    /** Creates a reusable processing instruction token. */
+    Token.PI createPiPending() {
+        return piPending.reset();
+    }
+
+    /** Emits the completed processing instruction token. */
+    void emitPiPending() {
+        emit(piPending);
     }
 
     void createDoctypePending() {
@@ -290,8 +336,19 @@ final class Tokeniser {
     }
 
     void eofError(TokeniserState state) {
+        if (isAttributeFragmentEnd(state)) return;
         if (errors.canAddError())
             errors.add(new ParseError(reader, "Unexpectedly reached end of file (EOF) in input state [%s]", state));
+    }
+
+    /** Tests whether EOF completes an attribute fragment in this state. */
+    private boolean isAttributeFragmentEnd(TokeniserState state) {
+        if (!attributeFragment) return false;
+        return state == TokeniserState.BeforeAttributeName ||
+            state == TokeniserState.AttributeName ||
+            state == TokeniserState.AfterAttributeName ||
+            state == TokeniserState.AttributeValue_unquoted ||
+            state == TokeniserState.AfterAttributeValue_quoted;
     }
 
     private void characterReferenceError(String message, Object... args) {

@@ -3,6 +3,8 @@
 ## 1.24.1 (Pending)
 
 ### Improvements
+* Added support for parsing processing instructions in HTML and XML, as `ProcessingInstruction` nodes. This supports marker nodes such as `<?marker name="country-options"?>`, matched by `<template for="country-options">` in the HTML Standard's new declarative streaming syntax. Processing instructions can be selected with `::pi` or `::pi(target)`, and their data can be read and changed through the node's attribute methods. **Change:** when using the XML parser, ordinary `<?target ...?>` nodes are now represented by `ProcessingInstruction` instead of `XmlDeclaration`; the `<?xml ...?>` declaration remains an `XmlDeclaration`. [#2613](https://github.com/jhy/jsoup/pull/2613)
+* Added `Parser.parseAttributes(String)` to parse an attribute fragment using that parser's settings.
 * `:has()` selectors with child and sibling combinators now run faster by limiting the search to the parts of the document where they can match. This particularly improves selectors such as `:has(> a)`, `:has(+ dd)`, and `:has(+ div span)`. [#2610](https://github.com/jhy/jsoup/pull/2610)
 
 ### Changes
@@ -19,6 +21,8 @@
 * `:has()` now correctly matches sibling alternatives and descendants of siblings. Given `<div id=a></div><div><span></span></div>`, both `#a:has(+ div, > span)` and `#a:has(+ div span)` select `#a`. [#2610](https://github.com/jhy/jsoup/pull/2610)
 * Within node selectors, `:not()` now correctly applies `:contains()` and `:matches()` to the node value. For example, `::comment:not(:contains(foo))` excludes comments containing `foo`. [#2610](https://github.com/jhy/jsoup/pull/2610)
 * Updated `<select>` parsing to the current HTML spec, retaining elements such as buttons and other markup that the previous rules discarded. [#2611](https://github.com/jhy/jsoup/issues/2611)
+* Template parsing now closes unclosed templates at EOF and handles forms correctly in template documents and fragments. [#2614](https://github.com/jhy/jsoup/issues/2614)
+* Fixed handling of null characters and initial newlines in HTML to better match the HTML spec, including `pre`, `listing`, and `textarea` elements. Leading newlines in these elements' text are preserved when saving and reparsing HTML. [#2616](https://github.com/jhy/jsoup/pull/2616)
 
 ## 1.23.2 (2026-Aug-26)
 
