@@ -140,11 +140,15 @@ public class HtmlParserTest {
         assertEquals("", doc.text());
     }
 
-    @Test public void dropsUnterminatedAttribute() {
-        // jsoup used to parse this to <p id="foo">, but whatwg, webkit will drop.
-        String h1 = "<p id=\"foo";
-        Document doc = Jsoup.parse(h1);
-        assertEquals("", doc.text());
+    @ParameterizedTest @ValueSource(strings = {"<p id=", "<p id=foo", "<p id=\"foo", "<p id=\"foo\""})
+    public void dropsUnterminatedAttribute(String html) {
+        assertEquals(0, Jsoup.parse(html).body().childNodeSize());
+    }
+
+    @Test public void keepsTagWithMissingAttributeValue() {
+        Element p = Jsoup.parse("<p id=>").expectFirst("p");
+        assertTrue(p.hasAttr("id"));
+        assertEquals("", p.attr("id"));
     }
 
     @Test public void parsesUnterminatedTextarea() {
@@ -1623,6 +1627,14 @@ public class HtmlParserTest {
         assertEquals(
             "<!doctype html> <html> <head></head> <body>Hello</body> </html>",
             StringUtil.normaliseWhitespace(doc.outerHtml()));
+    }
+
+    @Test public void closesEmptyDoctypeBeforeBodyText() {
+        Document doc = Jsoup.parse("<!DOCTYPE >Hello");
+        doc.outputSettings().prettyPrint(false);
+
+        assertEquals("<!doctype><html><head></head><body>Hello</body></html>", doc.outerHtml());
+        assertEquals(Document.QuirksMode.quirks, doc.quirksMode());
     }
 
     @Test public void handlesManyChildren() {

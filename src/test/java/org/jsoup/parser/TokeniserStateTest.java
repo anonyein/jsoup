@@ -14,9 +14,11 @@ import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 
 import java.util.Arrays;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.params.provider.Arguments.arguments;
 
 public class TokeniserStateTest {
@@ -94,6 +96,74 @@ public class TokeniserStateTest {
             Document doc = Jsoup.parse(testCase[0]);
             assertEquals(testCase[1], ((Comment) doc.childNode(0)).getData(), testCase[0]);
         }
+    }
+
+    @Test void commentStartDashRetainsHyphen() {
+        Parser parser = Parser.htmlParser().setTrackErrors(10);
+        Document doc = parser.parseInput("<!---x", "");
+
+        assertEquals("-x", ((Comment) doc.childNode(0)).getData());
+        List<ParseError> errors = parser.getErrors();
+        assertEquals(1, errors.size());
+        assertEquals(6, errors.get(0).getPosition());
+        assertEquals("Unexpectedly reached end of file (EOF) in input state [Comment]", errors.get(0).getErrorMessage());
+    }
+
+    @Test void commentStartDashReconsumesNull() {
+        Parser parser = Parser.htmlParser().setTrackErrors(10);
+        Document doc = parser.parseInput("<!---\u0000x-->", "");
+
+        assertEquals("-\uFFFDx", ((Comment) doc.childNode(0)).getData());
+        List<ParseError> errors = parser.getErrors();
+        assertEquals(1, errors.size());
+        assertEquals(5, errors.get(0).getPosition());
+        assertEquals("Unexpected character '\u0000' in input state [Comment]", errors.get(0).getErrorMessage());
+    }
+
+    @Test void commentStartDashReportsAbruptCloseAtGreaterThan() {
+        Parser parser = Parser.htmlParser().setTrackErrors(10);
+        Document doc = parser.parseInput("<!--->", "");
+
+        assertEquals("", ((Comment) doc.childNode(0)).getData());
+        List<ParseError> errors = parser.getErrors();
+        assertEquals(1, errors.size());
+        assertEquals(5, errors.get(0).getPosition());
+        assertEquals("Unexpected character '>' in input state [CommentStartDash]", errors.get(0).getErrorMessage());
+    }
+
+    @Test void eofBeforeAttributeValueDropsTag() {
+        Parser parser = Parser.htmlParser().setTrackErrors(10);
+        Document doc = parser.parseInput("<a x=", "");
+
+        assertEquals(0, doc.select("a").size());
+        List<ParseError> errors = parser.getErrors();
+        assertEquals(1, errors.size());
+        assertEquals(5, errors.get(0).getPosition());
+        assertEquals("Unexpectedly reached end of file (EOF) in input state [BeforeAttributeValue]", errors.get(0).getErrorMessage());
+    }
+
+    @Test void missingAttributeValueReportsGreaterThan() {
+        Parser parser = Parser.htmlParser().setTrackErrors(10);
+        Document doc = parser.parseInput("<a x=></a>", "");
+
+        Element a = doc.expectFirst("a");
+        assertTrue(a.hasAttr("x"));
+        assertEquals("", a.attr("x"));
+        List<ParseError> errors = parser.getErrors();
+        assertEquals(1, errors.size());
+        assertEquals(5, errors.get(0).getPosition());
+        assertEquals("Unexpected character '>' in input state [BeforeAttributeValue]", errors.get(0).getErrorMessage());
+    }
+
+    @Test void scriptLessThanAtEofReportsOnlyUnclosedScript() {
+        Parser parser = Parser.htmlParser().setTrackErrors(10);
+        Document doc = parser.parseInput("<script><", "");
+
+        assertEquals("<", doc.expectFirst("script").data());
+        List<ParseError> errors = parser.getErrors();
+        assertEquals(1, errors.size());
+        assertEquals(9, errors.get(0).getPosition());
+        assertEquals("Unexpected EOF token [] when in state [Text]", errors.get(0).getErrorMessage());
     }
 
     @Test
@@ -261,6 +331,71 @@ public class TokeniserStateTest {
         }
     }
 
+    @Test void doctypeEofReportsOnce() {
+        Parser parser = Parser.htmlParser().setTrackErrors(10);
+        parser.parseInput("<!DOCTYPE", "");
+
+        List<ParseError> errors = parser.getErrors();
+        assertEquals(1, errors.size());
+        assertEquals("Unexpectedly reached end of file (EOF) in input state [Doctype]", errors.get(0).getErrorMessage());
+    }
+
+    @Test void emptyDoctypeReportsMissingName() {
+        Parser parser = Parser.htmlParser().setTrackErrors(10);
+        Document doc = parser.parseInput("<!DOCTYPE>Hi", "");
+
+        assertEquals("Hi", doc.body().text());
+        List<ParseError> errors = parser.getErrors();
+        assertEquals(1, errors.size());
+        assertEquals("Unexpected character '>' in input state [BeforeDoctypeName]", errors.get(0).getErrorMessage());
+    }
+
+    @Test void whitespaceBeforeSystemIdentifierDoesNotError() {
+        for (char quote : new char[] {'"', '\''}) {
+            Parser parser = Parser.htmlParser().setTrackErrors(10);
+            Document doc = parser.parseInput(String.format("<!DOCTYPE html PUBLIC 'pub' %csys%c>Hi", quote, quote), "");
+
+            assertEquals("Hi", doc.body().text());
+            assertEquals(0, parser.getErrors().size());
+        }
+    }
+
+    @Test void missingQuoteAfterSystemKeywordEntersBogusDoctype() {
+        Parser parser = Parser.htmlParser().setTrackErrors(10);
+        Document doc = parser.parseInput("<!DOCTYPE html SYSTEMfoo>Hi", "");
+
+        assertEquals("Hi", doc.body().text());
+        List<ParseError> errors = parser.getErrors();
+        assertEquals(1, errors.size());
+        assertEquals("Unexpected character 'f' in input state [AfterDoctypeSystemKeyword]", errors.get(0).getErrorMessage());
+    }
+
+    @ParameterizedTest @MethodSource
+    void bogusDoctypeReportsNull(String input, String state, Document.QuirksMode expectedMode) {
+        Parser parser = Parser.htmlParser().setTrackErrors(10);
+        Document doc = parser.parseInput(String.format("%s\u0000>Hi", input), "");
+
+        assertEquals("Hi", doc.body().text());
+        assertEquals(expectedMode, doc.quirksMode());
+        List<ParseError> errors = parser.getErrors();
+        assertEquals(2, errors.size(), input);
+        assertEquals(String.format("Unexpected character '\u0000' in input state [%s]", state), errors.get(0).getErrorMessage());
+        assertEquals("Unexpected character '\u0000' in input state [BogusDoctype]", errors.get(1).getErrorMessage());
+    }
+
+    private static Arguments[] bogusDoctypeReportsNull() {
+        return new Arguments[] {
+            arguments("<!DOCTYPE html ", "AfterDoctypeName", Document.QuirksMode.quirks),
+            arguments("<!DOCTYPE html PUBLIC", "AfterDoctypePublicKeyword", Document.QuirksMode.quirks),
+            arguments("<!DOCTYPE html PUBLIC ", "BeforeDoctypePublicIdentifier", Document.QuirksMode.quirks),
+            arguments("<!DOCTYPE html PUBLIC 'pub'", "AfterDoctypePublicIdentifier", Document.QuirksMode.quirks),
+            arguments("<!DOCTYPE html PUBLIC 'pub' ", "BetweenDoctypePublicAndSystemIdentifiers", Document.QuirksMode.quirks),
+            arguments("<!DOCTYPE html SYSTEM", "AfterDoctypeSystemKeyword", Document.QuirksMode.quirks),
+            arguments("<!DOCTYPE html SYSTEM ", "BeforeDoctypeSystemIdentifier", Document.QuirksMode.quirks),
+            arguments("<!DOCTYPE html SYSTEM 'sys'", "AfterDoctypeSystemIdentifier", Document.QuirksMode.noQuirks)
+        };
+    }
+
     @Test
     public void testUnconsumeAtBufferBoundary() {
         // test for #1251: put the malformed post-quote attribute character at the reader refill boundary
@@ -318,9 +453,6 @@ public class TokeniserStateTest {
         Document doc = Jsoup.parse("<p name=foo&lt;bar>");
         Element p = doc.selectFirst("p");
         assertEquals("foo<bar", p.attr("name"));
-
-        doc = Jsoup.parse("<p foo=");
-        assertEquals("<p foo></p>", doc.body().html());
     }
 
     @ParameterizedTest
