@@ -4,8 +4,13 @@ import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
+
+import java.util.Collections;
 
 import static org.jsoup.select.EvaluatorDebug.sexpr;
+import static org.jsoup.select.QueryParser.MaxQueryComplexity;
 import static org.jsoup.select.Selector.SelectorParseException;
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -255,36 +260,39 @@ public class QueryParserTest {
         assertEquals("::pi target must be a CSS identifier", trailing.getMessage());
     }
 
-    @Test void choosesHasTraversalScope() {
-        assertHasScope("> a", HasEvaluator.Scope.Children);
-        assertHasScope("+ div", HasEvaluator.Scope.NextSibling);
-        assertHasScope("+ ::comment", HasEvaluator.Scope.FollowingSiblings);
-        assertHasScope("~ p", HasEvaluator.Scope.FollowingSiblings);
-        assertHasScope("+ div span", HasEvaluator.Scope.NextSiblingTree);
-        assertHasScope("+ div + section", HasEvaluator.Scope.FollowingSiblingTrees);
-        assertHasScope("~ p span", HasEvaluator.Scope.FollowingSiblingTrees);
-        assertHasScope("p", HasEvaluator.Scope.Descendants);
+    @Test void choosesHasTraversalBounds() {
+        assertHasBounds("> a", false, false, false);
+        assertHasBounds("+ div", true, false, true);
+        assertHasBounds("+ ::comment", true, false, false);
+        assertHasBounds("~ p", true, false, false);
+        assertHasBounds("+ div span", true, true, true);
+        assertHasBounds("+ div + section", true, true, false);
+        assertHasBounds("~ p span", true, true, false);
+        assertHasBounds("p", false, true, false);
     }
 
-    @Test void nestedSelectorsDoNotAffectHasTraversalScope() {
-        assertHasScope("> div:is(section > div)", HasEvaluator.Scope.Children);
-        assertHasScope("+ div:has(> p + span)", HasEvaluator.Scope.NextSibling);
-        assertHasScope("+ div:is(section > div) span", HasEvaluator.Scope.NextSiblingTree);
-        assertHasScope("div:is(section > div)", HasEvaluator.Scope.Descendants);
+    @Test void nestedSelectorsDoNotAffectHasTraversalBounds() {
+        assertHasBounds("> div:is(section > div)", false, false, false);
+        assertHasBounds("+ div:has(> p + span)", true, false, true);
+        assertHasBounds("+ div:is(section > div) span", true, true, true);
+        assertHasBounds("div:is(section > div)", false, true, false);
     }
 
-    @Test void groupsHasAlternativesByTraversalScope() {
+    @Test void groupsHasAlternativesByTraversalBounds() {
         HasEvaluator has = (HasEvaluator) QueryParser.parse(":has(> a, > span, + div, ~ p, + div span, p)");
         assertEquals(5, has.traversals.size());
-        assertEquals(HasEvaluator.Scope.Children, has.traversals.get(0).scope);
-        assertInstanceOf(CombiningEvaluator.Or.class, has.traversals.get(0).evaluator);
+        HasEvaluator.Traversal first = has.traversals.get(0);
+        assertFalse(first.startsAtSibling);
+        assertFalse(first.descend);
+        assertFalse(first.nextSiblingOnly);
+        assertEquals(2, ((CombiningEvaluator.Or) first.evaluator).evaluators.size());
         // grouping keeps the original selectors for toString()
-        assertEquals(":has(" + QueryParser.parse("> a, > span, + div, ~ p, + div span, p") + ")", has.toString());
+        assertEquals(":has(> a, > span, + div, ~ p, + div span, p)", has.toString());
     }
 
     @Test void hasRetainsCanonicalSelectorText() {
         Evaluator has = QueryParser.parse(":has( > A, SPAN.foo )");
-        assertEquals(":has(> > a, span.foo)", has.toString());
+        assertEquals(":has(> a, span.foo)", has.toString());
     }
 
     @Test void notRequiresNonEmptySelector() {
@@ -295,12 +303,63 @@ public class QueryParserTest {
         }
     }
 
-    @Test void hasTraversalRemovesOnlyEstablishedRelationship() {
-        assertEquals("a[href]", hasTraversal("> a[href]").evaluator.toString());
-        assertEquals("div", hasTraversal("+ div").evaluator.toString());
-        assertEquals("p", hasTraversal("~ p").evaluator.toString());
-        assertEquals("> + ::comment", hasTraversal("+ ::comment").evaluator.toString());
-        assertEquals("> > section a", hasTraversal("> section a").evaluator.toString());
+    @Test void limitsNestedSelectors() {
+        for (String pseudo : new String[] {"has", "is", "not"})
+            assertComplexityLimit(nestedSelector(pseudo, MaxQueryComplexity), nestedSelector(pseudo, MaxQueryComplexity + 1));
+    }
+
+    @Test void limitsNodeSelectors() {
+        String maximum = String.join("", Collections.nCopies(MaxQueryComplexity, "::text"));
+        assertComplexityLimit(maximum, maximum + "::text");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {" ", ">", "+", "~"})
+    void limitsCombinatorChains(String combinator) {
+        String maximum = String.join("", Collections.nCopies(MaxQueryComplexity, "x" + combinator)) + "x";
+        assertComplexityLimit(maximum, maximum + combinator + "x");
+    }
+
+    @Test void limitsLeadingCombinators() {
+        String maximum = ">" + String.join("", Collections.nCopies(MaxQueryComplexity - 1, "x>")) + "x";
+        assertComplexityLimit(maximum, maximum + ">x");
+    }
+
+    @Test void sharesComplexityBudget() {
+        String mixed = "x";
+        for (int i = 0; i < MaxQueryComplexity / 4; i++) mixed = "::node:not(" + mixed + ") x+x";
+        assertComplexityLimit(mixed, mixed + " x");
+
+        String alternatives = String.join(",", Collections.nCopies(MaxQueryComplexity, ":is(x)"));
+        assertComplexityLimit(alternatives, alternatives + ",:is(x)");
+    }
+
+    @Test void flatSelectorsAndLiteralValuesDoNotConsumeComplexityBudget() {
+        String classes = "x" + String.join("", Collections.nCopies(MaxQueryComplexity + 1, ".a"));
+        String value = String.join("", Collections.nCopies(MaxQueryComplexity + 1, ">"));
+        for (boolean web : new boolean[]{false, true}) {
+            assertDoesNotThrow(() -> QueryParser.parse(classes, web));
+            assertDoesNotThrow(() -> QueryParser.parse(":matches(" + value + ")[x='" + value + "']", web));
+        }
+    }
+
+    private static void assertComplexityLimit(String maximum, String excessive) {
+        for (boolean web : new boolean[]{false, true}) {
+            Evaluator evaluator = assertDoesNotThrow(() -> QueryParser.parse(maximum, web));
+            assertDoesNotThrow(evaluator::toString);
+            assertDoesNotThrow(() -> Jsoup.parse("<x></x>").select(evaluator));
+            SelectorParseException exception = assertThrows(SelectorParseException.class,
+                () -> QueryParser.parse(excessive, web));
+            assertEquals("Query complexity exceeds maximum of " + MaxQueryComplexity, exception.getMessage());
+        }
+    }
+
+    private static String nestedSelector(String pseudo, int depth) {
+        StringBuilder query = new StringBuilder();
+        for (int i = 0; i < depth; i++) query.append(':').append(pseudo).append('(');
+        query.append('x');
+        for (int i = 0; i < depth; i++) query.append(')');
+        return query.toString();
     }
 
     private static HasEvaluator.Traversal hasTraversal(String selector) {
@@ -308,7 +367,10 @@ public class QueryParserTest {
         return has.traversals.get(0);
     }
 
-    private static void assertHasScope(String selector, HasEvaluator.Scope expected) {
-        assertEquals(expected, hasTraversal(selector).scope, selector);
+    private static void assertHasBounds(String selector, boolean startsAtSibling, boolean descend, boolean nextSiblingOnly) {
+        HasEvaluator.Traversal traversal = hasTraversal(selector);
+        assertEquals(startsAtSibling, traversal.startsAtSibling, selector);
+        assertEquals(descend, traversal.descend, selector);
+        assertEquals(nextSiblingOnly, traversal.nextSiblingOnly, selector);
     }
 }
